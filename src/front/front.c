@@ -14,7 +14,7 @@ int front_load(Arena *arena, const char *source, const char *text, size_t len, D
   out->count = 0;
   out->cap = 0;
   return load_one(arena, "domain/domain.lang", ORIGIN_DOMAIN, (const char *)domain_source, domain_source_len, out, diag)
-      && load_one(arena, CONTRACT_SOURCE_NAME, ORIGIN_DOMAIN, contract_source, contract_source_len, out, diag)
+      && load_one(arena, CONTRACT_SOURCE_NAME, ORIGIN_KIT, contract_source, contract_source_len, out, diag)
       && load_one(arena, source, ORIGIN_PROGRAM, text, len, out, diag);
 }
 
@@ -23,7 +23,7 @@ int front_load_domain(Arena *arena, const char *source, const char *domain, cons
   out->count = 0;
   out->cap = 0;
   return load_one(arena, "domain/domain.lang", ORIGIN_DOMAIN, (const char *)domain_source, domain_source_len, out, diag)
-      && load_one(arena, CONTRACT_SOURCE_NAME, ORIGIN_DOMAIN, contract_source, contract_source_len, out, diag)
+      && load_one(arena, CONTRACT_SOURCE_NAME, ORIGIN_KIT, contract_source, contract_source_len, out, diag)
       && load_one(arena, source, ORIGIN_DOMAIN, domain, strlen(domain), out, diag)
       && load_one(arena, source, ORIGIN_PROGRAM, text, len, out, diag);
 }

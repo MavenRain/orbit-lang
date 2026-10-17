@@ -6,7 +6,10 @@
 #include "front/lexer.h"
 #include "front/parser.h"
 
-static int domain(const char *text, const char *want) {
+/* checked parses TEXT with ORIGIN and checks it in MODE. A domain row is
+   trusted text in kit mode; a guest row (orbit-lang S3) is program text in
+   guest mode. */
+static int checked(const char *text, Origin origin, CheckMode mode, const char *want) {
   Arena arena;
   Diag diag;
   TokenList tokens = {0};
@@ -15,8 +18,8 @@ static int domain(const char *text, const char *want) {
   arena_init(&arena, (size_t)1 << 24);
   diag_init(&diag);
   int ok = lex_source(&arena, "test-domain", text, strlen(text), &tokens, &diag)
-    && parse_source(&arena, "test-domain", ORIGIN_DOMAIN, &tokens, &decls, &diag)
-    && check_program(&arena, &decls, &machine, &diag);
+    && parse_source(&arena, "test-domain", origin, &tokens, &decls, &diag)
+    && check_program(&arena, &decls, &machine, &diag, mode);
   int passed = want == NULL ? ok : !ok && diag.code != NULL && strcmp(diag.code, want) == 0;
   if (passed && want == NULL && machine.has_state) {
     const CtorInfo *ci = &machine.ctors[machine.families[machine.state_family].first_ctor];
@@ -24,11 +27,19 @@ static int domain(const char *text, const char *want) {
       passed &= eval_core(&machine, NULL, ci->fields[i].type) != NULL;
   }
   if (!passed) {
-    fprintf(stderr, "FAIL domain: wanted %s, got %s: %s\n", want == NULL ? "ok" : want,
-            ok ? "ok" : diag.code == NULL ? "no diagnostic" : diag.code, text);
+    fprintf(stderr, "FAIL %s: wanted %s, got %s: %s\n", mode == CHECK_KIT ? "domain" : "guest",
+            want == NULL ? "ok" : want, ok ? "ok" : diag.code == NULL ? "no diagnostic" : diag.code, text);
   }
   arena_release(&arena);
   return passed;
+}
+
+static int domain(const char *text, const char *want) {
+  return checked(text, ORIGIN_DOMAIN, CHECK_KIT, want);
+}
+
+static int guest(const char *text, const char *want) {
+  return checked(text, ORIGIN_PROGRAM, CHECK_GUEST, want);
 }
 
 static int normal_roundtrip(const char *type, const char *body) {
@@ -44,7 +55,7 @@ static int normal_roundtrip(const char *type, const char *body) {
   diag_init(&diag);
   int ok = lex_source(&arena, "test-roundtrip", source, strlen(source), &tokens, &diag)
     && parse_source(&arena, "test-roundtrip", ORIGIN_DOMAIN, &tokens, &decls, &diag)
-    && check_program(&arena, &decls, &machine, &diag);
+    && check_program(&arena, &decls, &machine, &diag, CHECK_KIT);
   if (ok)
     ok = value_print(&machine, NULL, 0, def_value(&machine, 0), normal, sizeof normal);
   if (!ok) {
@@ -112,6 +123,11 @@ int main(void) {
   ok &= domain("def eta : (p : Sigma (n : Nat) (Path Nat n n)) -> Path (Sigma (n : Nat) (Path Nat n n)) (pack (witness p) (payload p)) p := fun p => refl", NULL);
   ok &= normal_roundtrip("Nat -> (A : Type 0) -> A -> A",
     "fun (i0 : Nat) (A : Type 0) (a : A) => transp (fun (i : I) => A) (~i1) a");
+  /* Guest mode (orbit-lang S3): a program with no kit name checks, and a Nat
+     literal is a kit item. The second row passes in kit mode only if the mode
+     is wrong. */
+  ok &= guest("def keep : Sum Unit Unit -> Sum Unit Unit := fun c => c", NULL);
+  ok &= guest("def three : Nat := 3", "REFUSE_KIT");
   if (ok) puts("domain regressions: passed");
   return ok ? 0 : 1;
 }

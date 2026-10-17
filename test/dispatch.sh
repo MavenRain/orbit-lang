@@ -7,7 +7,7 @@ set -u
 fail=0
 checks=0
 
-rt=$(build/langc build examples/residuals.lang --runtime) || { echo 'FAIL dispatch: langc build'; exit 1; }
+rt=$(build/langc --kit build examples/residuals.lang --runtime) || { echo 'FAIL dispatch: langc build'; exit 1; }
 revert='error: execution reverted'
 trapped="0xae96083a $revert"
 

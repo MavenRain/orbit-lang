@@ -59,3 +59,4 @@ kan evPair => 3
 kan evTrans => 3
 trunc truncMapped => trunc1 Nat 0
 quot toTrunc3 => trunc0 Nat 2
+signature flipped => inr unit

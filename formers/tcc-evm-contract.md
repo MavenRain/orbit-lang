@@ -4,6 +4,14 @@ The front end of this kit is a copy of the tcc-wasm front end. `langc check`
 and `langc eval` accept the formers F1 to F15 as that front end does.
 `test/gate.sh` runs the examples on them.
 
+In orbit-lang S3, the kit examples and contract operations below require
+`--kit` before the command, for example `build/langc --kit check
+examples/formers.lang` or `build/langc --kit build examples/contract.lang`.
+Without `--kit`, guest mode refuses kit types, operations, literals and
+contract declarations with `REFUSE_KIT`. `examples/signature.lang` is a
+guest example and checks without `--kit`; the gate uses the `kit.txt`
+lists to select each example's mode.
+
 ## EVM output (slice K4, done in the kit)
 
 `langc build` lowers a contract to EVM bytecode (docs/host/README.md,

@@ -23,7 +23,7 @@ static int run_fuel(int cached_init) {
   arena_init(&arena, (size_t)1 << 25);
   diag_init(&diag);
   ok = front_load(&arena, "run-fuel", program, strlen(program), &decls, &diag)
-    && check_program(&arena, &decls, &machine, &diag);
+    && check_program(&arena, &decls, &machine, &diag, CHECK_KIT);
   if (ok && cached_init) {
     for (i = 0; i < machine.def_count; i++) {
       if (strcmp(machine.defs[i].name, "init") == 0) {

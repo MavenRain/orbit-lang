@@ -65,9 +65,12 @@ typedef enum {
   DECL_FAMILY  /* family name params := ctor | ... */
 } DeclKind;
 
-/* A family is legal only in the domain file (rule R1). */
+/* A family is legal only in the domain file (rule R1). ORIGIN_KIT is the
+   contract prelude (orbit-lang S3): trusted as domain text, and its names
+   are kit items outside the base span. */
 typedef enum {
   ORIGIN_DOMAIN,
+  ORIGIN_KIT,
   ORIGIN_PROGRAM
 } Origin;
 

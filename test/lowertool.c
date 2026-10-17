@@ -50,7 +50,7 @@ static int regression(const char *name, const char *defs, size_t functions,
   arena_init(&arena, (size_t)1 << 25);
   diag_init(&diag);
   ok = front_load(&arena, name, source, strlen(source), &decls, &diag)
-    && check_program(&arena, &decls, &machine, &diag);
+    && check_program(&arena, &decls, &machine, &diag, CHECK_KIT);
   if (ok) {
     if (empty_fuel) machine.fuel = 0;
     const CtorInfo *ci = &machine.ctors[machine.families[machine.state_family].first_ctor];
@@ -108,7 +108,7 @@ static int order_regression(const char *name, const char *defs, int local_cond) 
   arena_init(&arena, (size_t)1 << 25);
   diag_init(&diag);
   ok = front_load(&arena, name, source, strlen(source), &decls, &diag)
-    && check_program(&arena, &decls, &machine, &diag);
+    && check_program(&arena, &decls, &machine, &diag, CHECK_KIT);
   if (ok) {
     const CtorInfo *ci = &machine.ctors[machine.families[machine.state_family].first_ctor];
     ok = lower_entries(&machine, ci, &program, NULL);
@@ -154,7 +154,7 @@ static int abi_mode_regression(const char *name, const char *source, const char 
   arena_init(&arena, (size_t)1 << 25);
   diag_init(&diag);
   int ok = front_load(&arena, name, source, strlen(source), &decls, &diag)
-    && check_program(&arena, &decls, &machine, &diag);
+    && check_program(&arena, &decls, &machine, &diag, CHECK_KIT);
   if (ok) {
     int status = lower_abi(&machine, out, json);
     if (code != NULL) {
@@ -193,7 +193,7 @@ static int abi_size_regression(const char *name, const char *source, const char 
   arena_init(&arena, (size_t)1 << 25);
   diag_init(&diag);
   int ok = front_load(&arena, name, source, strlen(source), &decls, &diag)
-    && check_program(&arena, &decls, &machine, &diag);
+    && check_program(&arena, &decls, &machine, &diag, CHECK_KIT);
   if (ok) {
     int result = lower_abi(&machine, out, 0);
     ok = (code == NULL ? result == 0 && diag.code == NULL
@@ -246,7 +246,7 @@ static int fold_regression(const char *name, const char *step, const char *seed,
   arena_init(&arena, (size_t)1 << 25);
   diag_init(&diag);
   int ok = front_load(&arena, name, source, strlen(source), &decls, &diag)
-    && check_program(&arena, &decls, &machine, &diag);
+    && check_program(&arena, &decls, &machine, &diag, CHECK_KIT);
   if (ok) {
     const Value *answer = NULL;
     machine.fuel = EVAL_FUEL_STEPS;
@@ -333,7 +333,7 @@ int main(void) {
     "{\"type\":\"event\",\"name\":\"Paid\",\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false}],\"anonymous\":false}\n"
     "]\n", 1);
   ok &= abi_boundaries();
-  int output_status = system("build/langc abi examples/contract.lang 1</dev/null 2>/dev/null");
+  int output_status = system("build/langc --kit abi examples/contract.lang 1</dev/null 2>/dev/null");
   if (output_status == -1 || !WIFEXITED(output_status) || WEXITSTATUS(output_status) != 2) {
     fprintf(stderr, "FAIL abi buffered-write (status %d)\n", output_status);
     ok = 0;

@@ -43,7 +43,16 @@ typedef struct {
   uint32_t field_top;
   int field_dep;
   int field_rec;
+  CheckMode mode; /* orbit-lang S3: guest or kit */
 } Checker;
+
+/* The visibility of a core name (orbit-lang S3). An INTERNAL name is a kit
+   item outside the base span (PLAN section 4): only the trusted prelude
+   scope and the kit mode resolve it. */
+typedef enum {
+  VIS_GUEST,
+  VIS_INTERNAL
+} Vis;
 
 typedef enum {
   RULE_TYPE0,
@@ -94,75 +103,76 @@ typedef struct {
   Op op;
   Op result;     /* VALUE0, NAT2, U256_2, ADDR2, TO_U256: the result type. EMPTY, INJ: the type former. */
   uint32_t part; /* INJ, PART, SIGMA_PART: 0 or 1 */
+  Vis vis;
 } Builtin;
 
 static const Builtin BUILTINS[] = {
-  {"Nat", 0, RULE_TYPE0, OP_NAT, OP_NAT, 0},
-  {"Flag", 0, RULE_TYPE0, OP_FLAG, OP_NAT, 0},
-  {"U256", 0, RULE_TYPE0, OP_U256, OP_NAT, 0},
-  {"Addr", 0, RULE_TYPE0, OP_ADDR, OP_NAT, 0},
-  {"Unit", 0, RULE_TYPE0, OP_UNIT, OP_NAT, 0},
-  {"Prod", 2, RULE_TYPE2, OP_PROD, OP_NAT, 0},
-  {"Sum", 2, RULE_TYPE2, OP_SUM, OP_NAT, 0},
-  {"Option", 1, RULE_TYPE1, OP_OPTION, OP_NAT, 0},
-  {"List", 1, RULE_TYPE1, OP_LIST, OP_NAT, 0},
-  {"I", 0, RULE_INTERVAL, OP_INTERVAL, OP_NAT, 0},
-  {"i0", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 0},
-  {"i1", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 1},
-  {"PathP", 3, RULE_PATHP, OP_INTERVAL, OP_NAT, 0},
-  {"Path", 3, RULE_PATH, OP_INTERVAL, OP_NAT, 0},
-  {"unit", 0, RULE_VALUE0, OP_UNIT_VAL, OP_UNIT, 0},
-  {"flagYes", 0, RULE_VALUE0, OP_FLAG_YES, OP_FLAG, 0},
-  {"flagNo", 0, RULE_VALUE0, OP_FLAG_NO, OP_FLAG, 0},
-  {"pair", 2, RULE_PAIR, OP_PAIR, OP_PROD, 0},
-  {"inl", 1, RULE_INJ, OP_INL, OP_SUM, 0},
-  {"inr", 1, RULE_INJ, OP_INR, OP_SUM, 1},
-  {"none", 0, RULE_EMPTY, OP_NONE, OP_OPTION, 0},
-  {"nil", 0, RULE_EMPTY, OP_NIL, OP_LIST, 0},
-  {"some", 1, RULE_SOME, OP_SOME, OP_OPTION, 0},
-  {"cons", 2, RULE_CONS, OP_CONS, OP_LIST, 0},
-  {"pack", 2, RULE_PACK, OP_PACK, OP_NAT, 0},
-  {"refl", 0, RULE_REFL, OP_INTERVAL, OP_NAT, 0},
-  {"first", 1, RULE_PART, OP_FIRST, OP_PROD, 0},
-  {"second", 1, RULE_PART, OP_SECOND, OP_PROD, 1},
-  {"witness", 1, RULE_SIGMA_PART, OP_WITNESS, OP_NAT, 0},
-  {"payload", 1, RULE_SIGMA_PART, OP_PAYLOAD, OP_NAT, 1},
-  {"either", 3, RULE_EITHER, OP_EITHER, OP_SUM, 0},
-  {"option", 3, RULE_OPTION, OP_OPTION_ELIM, OP_OPTION, 0},
-  {"pure", 1, RULE_PURE, OP_PURE, OP_NAT, 0},
-  {"map", 2, RULE_MAP, OP_MAP, OP_NAT, 0},
-  {"bind", 2, RULE_BIND, OP_BIND, OP_NAT, 0},
-  {"filter", 2, RULE_FILTER, OP_FILTER, OP_NAT, 0},
-  {"fold", 2, RULE_FOLD, OP_FOLD_NAT, OP_NAT, 0},
-  {"unfold", 3, RULE_UNFOLD, OP_UNFOLD, OP_LIST, 0},
-  {"sym", 1, RULE_SYM, OP_INTERVAL, OP_NAT, 0},
-  {"cong", 2, RULE_CONG, OP_INTERVAL, OP_NAT, 0},
-  {"funExt", 1, RULE_FUNEXT, OP_INTERVAL, OP_NAT, 0},
-  {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0},
-  {"hcomp", 4, RULE_HCOMP, OP_HCOMP, OP_NAT, 0},
-  {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
-  {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0},
-  {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FLAG, 0},
-  {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FLAG, 0},
-  {"u256Add", 2, RULE_U256_2, OP_U256_ADD, OP_U256, 0},
-  {"u256Sub", 2, RULE_U256_2, OP_U256_SUB, OP_U256, 0},
-  {"u256Le", 2, RULE_U256_2, OP_U256_LE, OP_FLAG, 0},
-  {"u256Eq", 2, RULE_U256_2, OP_U256_EQ, OP_FLAG, 0},
-  {"toU256", 1, RULE_TO_U256, OP_TO_U256, OP_U256, 0},
-  {"addrEq", 2, RULE_ADDR2, OP_ADDR_EQ, OP_FLAG, 0},
-  {"flagIf", 3, RULE_FLAG_IF, OP_FLAG_IF, OP_FLAG, 0},
-  {"Map", 2, RULE_KMAP, OP_KMAP, OP_NAT, 0},
-  {"mapEmpty", 0, RULE_EMPTY, OP_KMAP_OF, OP_KMAP, 0},
-  {"mapGet", 2, RULE_KMAP_GET, OP_KMAP_GET, OP_KMAP, 0},
-  {"mapSet", 3, RULE_KMAP_SET, OP_KMAP_SET, OP_KMAP, 0},
-  {"natDiv", 2, RULE_NAT2, OP_NAT_DIV, OP_NAT, 0},
-  {"natMod", 2, RULE_NAT2, OP_NAT_MOD, OP_NAT, 0},
-  {"hash", 2, RULE_U256_2, OP_HASH, OP_U256, 0},
-  {"ecrecover", 4, RULE_FIXED, OP_ECRECOVER, OP_ADDR, 0},
-  {"ecAdd", 2, RULE_FIXED, OP_EC_ADD, OP_PROD, 0},
-  {"ecMul", 2, RULE_FIXED, OP_EC_MUL, OP_PROD, 0},
-  {"ecPairing", 1, RULE_FIXED, OP_EC_PAIRING, OP_FLAG, 0},
-  {"addrToU256", 1, RULE_ADDR2, OP_ADDR_TO_U256, OP_U256, 0}
+  {"Nat", 0, RULE_TYPE0, OP_NAT, OP_NAT, 0, VIS_INTERNAL},
+  {"Flag", 0, RULE_TYPE0, OP_FLAG, OP_NAT, 0, VIS_INTERNAL},
+  {"U256", 0, RULE_TYPE0, OP_U256, OP_NAT, 0, VIS_INTERNAL},
+  {"Addr", 0, RULE_TYPE0, OP_ADDR, OP_NAT, 0, VIS_INTERNAL},
+  {"Unit", 0, RULE_TYPE0, OP_UNIT, OP_NAT, 0, VIS_GUEST},
+  {"Prod", 2, RULE_TYPE2, OP_PROD, OP_NAT, 0, VIS_GUEST},
+  {"Sum", 2, RULE_TYPE2, OP_SUM, OP_NAT, 0, VIS_GUEST},
+  {"Option", 1, RULE_TYPE1, OP_OPTION, OP_NAT, 0, VIS_GUEST},
+  {"List", 1, RULE_TYPE1, OP_LIST, OP_NAT, 0, VIS_GUEST},
+  {"I", 0, RULE_INTERVAL, OP_INTERVAL, OP_NAT, 0, VIS_GUEST},
+  {"i0", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 0, VIS_GUEST},
+  {"i1", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 1, VIS_GUEST},
+  {"PathP", 3, RULE_PATHP, OP_INTERVAL, OP_NAT, 0, VIS_GUEST},
+  {"Path", 3, RULE_PATH, OP_INTERVAL, OP_NAT, 0, VIS_GUEST},
+  {"unit", 0, RULE_VALUE0, OP_UNIT_VAL, OP_UNIT, 0, VIS_GUEST},
+  {"flagYes", 0, RULE_VALUE0, OP_FLAG_YES, OP_FLAG, 0, VIS_INTERNAL},
+  {"flagNo", 0, RULE_VALUE0, OP_FLAG_NO, OP_FLAG, 0, VIS_INTERNAL},
+  {"pair", 2, RULE_PAIR, OP_PAIR, OP_PROD, 0, VIS_GUEST},
+  {"inl", 1, RULE_INJ, OP_INL, OP_SUM, 0, VIS_GUEST},
+  {"inr", 1, RULE_INJ, OP_INR, OP_SUM, 1, VIS_GUEST},
+  {"none", 0, RULE_EMPTY, OP_NONE, OP_OPTION, 0, VIS_GUEST},
+  {"nil", 0, RULE_EMPTY, OP_NIL, OP_LIST, 0, VIS_GUEST},
+  {"some", 1, RULE_SOME, OP_SOME, OP_OPTION, 0, VIS_GUEST},
+  {"cons", 2, RULE_CONS, OP_CONS, OP_LIST, 0, VIS_GUEST},
+  {"pack", 2, RULE_PACK, OP_PACK, OP_NAT, 0, VIS_GUEST},
+  {"refl", 0, RULE_REFL, OP_INTERVAL, OP_NAT, 0, VIS_GUEST},
+  {"first", 1, RULE_PART, OP_FIRST, OP_PROD, 0, VIS_GUEST},
+  {"second", 1, RULE_PART, OP_SECOND, OP_PROD, 1, VIS_GUEST},
+  {"witness", 1, RULE_SIGMA_PART, OP_WITNESS, OP_NAT, 0, VIS_GUEST},
+  {"payload", 1, RULE_SIGMA_PART, OP_PAYLOAD, OP_NAT, 1, VIS_GUEST},
+  {"either", 3, RULE_EITHER, OP_EITHER, OP_SUM, 0, VIS_GUEST},
+  {"option", 3, RULE_OPTION, OP_OPTION_ELIM, OP_OPTION, 0, VIS_GUEST},
+  {"pure", 1, RULE_PURE, OP_PURE, OP_NAT, 0, VIS_GUEST},
+  {"map", 2, RULE_MAP, OP_MAP, OP_NAT, 0, VIS_GUEST},
+  {"bind", 2, RULE_BIND, OP_BIND, OP_NAT, 0, VIS_GUEST},
+  {"filter", 2, RULE_FILTER, OP_FILTER, OP_NAT, 0, VIS_GUEST},
+  {"fold", 2, RULE_FOLD, OP_FOLD_NAT, OP_NAT, 0, VIS_GUEST},
+  {"unfold", 3, RULE_UNFOLD, OP_UNFOLD, OP_LIST, 0, VIS_GUEST},
+  {"sym", 1, RULE_SYM, OP_INTERVAL, OP_NAT, 0, VIS_GUEST},
+  {"cong", 2, RULE_CONG, OP_INTERVAL, OP_NAT, 0, VIS_GUEST},
+  {"funExt", 1, RULE_FUNEXT, OP_INTERVAL, OP_NAT, 0, VIS_GUEST},
+  {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0, VIS_GUEST},
+  {"hcomp", 4, RULE_HCOMP, OP_HCOMP, OP_NAT, 0, VIS_GUEST},
+  {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0, VIS_INTERNAL},
+  {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0, VIS_INTERNAL},
+  {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FLAG, 0, VIS_INTERNAL},
+  {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FLAG, 0, VIS_INTERNAL},
+  {"u256Add", 2, RULE_U256_2, OP_U256_ADD, OP_U256, 0, VIS_INTERNAL},
+  {"u256Sub", 2, RULE_U256_2, OP_U256_SUB, OP_U256, 0, VIS_INTERNAL},
+  {"u256Le", 2, RULE_U256_2, OP_U256_LE, OP_FLAG, 0, VIS_INTERNAL},
+  {"u256Eq", 2, RULE_U256_2, OP_U256_EQ, OP_FLAG, 0, VIS_INTERNAL},
+  {"toU256", 1, RULE_TO_U256, OP_TO_U256, OP_U256, 0, VIS_INTERNAL},
+  {"addrEq", 2, RULE_ADDR2, OP_ADDR_EQ, OP_FLAG, 0, VIS_INTERNAL},
+  {"flagIf", 3, RULE_FLAG_IF, OP_FLAG_IF, OP_FLAG, 0, VIS_INTERNAL},
+  {"Map", 2, RULE_KMAP, OP_KMAP, OP_NAT, 0, VIS_INTERNAL},
+  {"mapEmpty", 0, RULE_EMPTY, OP_KMAP_OF, OP_KMAP, 0, VIS_INTERNAL},
+  {"mapGet", 2, RULE_KMAP_GET, OP_KMAP_GET, OP_KMAP, 0, VIS_INTERNAL},
+  {"mapSet", 3, RULE_KMAP_SET, OP_KMAP_SET, OP_KMAP, 0, VIS_INTERNAL},
+  {"natDiv", 2, RULE_NAT2, OP_NAT_DIV, OP_NAT, 0, VIS_INTERNAL},
+  {"natMod", 2, RULE_NAT2, OP_NAT_MOD, OP_NAT, 0, VIS_INTERNAL},
+  {"hash", 2, RULE_U256_2, OP_HASH, OP_U256, 0, VIS_INTERNAL},
+  {"ecrecover", 4, RULE_FIXED, OP_ECRECOVER, OP_ADDR, 0, VIS_INTERNAL},
+  {"ecAdd", 2, RULE_FIXED, OP_EC_ADD, OP_PROD, 0, VIS_INTERNAL},
+  {"ecMul", 2, RULE_FIXED, OP_EC_MUL, OP_PROD, 0, VIS_INTERNAL},
+  {"ecPairing", 1, RULE_FIXED, OP_EC_PAIRING, OP_FLAG, 0, VIS_INTERNAL},
+  {"addrToU256", 1, RULE_ADDR2, OP_ADDR_TO_U256, OP_U256, 0, VIS_INTERNAL}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -1858,6 +1868,37 @@ static int unknown_name(Checker *c, const char *name) {
   return FAIL(c, "NAME_UNKNOWN", "unknown name %s", name);
 }
 
+/* A program declaration in guest mode (orbit-lang S3). The domain file and
+   the contract prelude are the trusted scope: no kit refusal there. */
+static int guest(const Checker *c) {
+  return c->mode == CHECK_GUEST && c->decls->items[c->decl_index].origin == ORIGIN_PROGRAM;
+}
+
+static int kit_refused(Checker *c, const char *what) {
+  return FAIL(c, "REFUSE_KIT", "%s is a kit item outside the base span (PLAN section 4); only the kit mode langc --kit admits it", what);
+}
+
+/* An INTERNAL core name, or a family, constructor or field of the contract
+   prelude (ORIGIN_KIT). */
+static int kit_head(const Checker *c, const Head *h) {
+  const Machine *m = c->m;
+  uint32_t fam = NO_FAMILY;
+  switch (h->kind) {
+  case HEAD_TERM:
+    return 0;
+  case HEAD_BUILTIN:
+    return h->builtin->vis == VIS_INTERNAL;
+  case HEAD_FAMILY:
+    fam = h->index;
+    break;
+  case HEAD_CTOR:
+  case HEAD_PROJ:
+    fam = m->ctors[h->index].family;
+    break;
+  }
+  return fam != NO_FAMILY && m->families[fam].origin == ORIGIN_KIT;
+}
+
 /* Name resolution order: locals (the innermost first), definitions,
    families, constructors, projections, core names. */
 static int resolve_head(Checker *c, const Term *head, Head *h) {
@@ -1865,7 +1906,14 @@ static int resolve_head(Checker *c, const Term *head, Head *h) {
   h->kind = HEAD_TERM;
   if (head->kind != TERM_VAR || find_local(c, head->name) != NULL || find_def(c->m, head->name) != NO_DEF)
     return 1;
-  return find_known(c, head->name, h) ? 1 : unknown_name(c, head->name);
+  if (!find_known(c, head->name, h))
+    return unknown_name(c, head->name);
+  return guest(c) && kit_head(c, h) ? kit_refused(c, head->name) : 1;
+}
+
+/* A Nat or a word literal is a kit item (orbit-lang S3). */
+static int literal_ok(Checker *c, const char *what) {
+  return guest(c) ? kit_refused(c, what) : 1;
 }
 
 static uint32_t known_arity(const Checker *c, const Head *h) {
@@ -2139,9 +2187,13 @@ static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, cons
   case TERM_APP:
     return elab_spine(c, t, hint, type);
   case TERM_NAT:
+    if (!literal_ok(c, "a Nat literal"))
+      return NULL;
     *type = nat_type(c);
     return finish(c, core_leaf(c, CORE_NAT, t->nat), hint, type);
   case TERM_WORD:
+    if (!literal_ok(c, "a word literal"))
+      return NULL;
     *type = tyop(c, t->nat == WORD_ADDR ? OP_ADDR : OP_U256, 0, NULL, NULL, NULL);
     return finish(c, core_word(c, t->nat, t->word), hint, type);
   case TERM_LAM:
@@ -2208,7 +2260,7 @@ static const char *name_owner(const Checker *c, const char *name) {
   i = find_def(m, name);
   if (i == NO_DEF)
     return NULL;
-  return m->defs[i].origin == ORIGIN_DOMAIN ? "a domain definition" : "already defined";
+  return m->defs[i].origin != ORIGIN_PROGRAM ? "a domain definition" : "already defined";
 }
 
 static int name_free(Checker *c, const char *name) {
@@ -2518,13 +2570,14 @@ static int check_family(Checker *c, const Decl *d) {
   f->param_count = (uint32_t)d->param_count;
   f->first_ctor = m->ctor_count;
   f->ctor_count = (uint32_t)d->ctor_count;
+  f->origin = d->origin;
   m->family_count++;
   c->self = fam;
   for (i = 0; i < d->ctor_count; i++) {
     if (!check_ctor(c, fam, &d->ctors[i]))
       return 0;
   }
-  return d->origin == ORIGIN_DOMAIN && strcmp(d->name, "Out") == 0 ? check_events(c, fam) : 1;
+  return d->origin != ORIGIN_PROGRAM && strcmp(d->name, "Out") == 0 ? check_events(c, fam) : 1;
 }
 
 /* Rule D-9 (slice K3c). The argument A of the history field K of the state
@@ -2655,6 +2708,97 @@ static int history_ok(Checker *c, const Core *t, int typed) {
   return 1;
 }
 
+/* The design signature (orbit-lang S3; PLAN section 3, O4): 11 types and 9
+   operations. A slot is a program definition of the slot type. A defined or
+   a primitive name is reserved until a later slice gives it (S4, S7, S8). */
+typedef enum {
+  SIG_TYPE,
+  SIG_OP
+} SigSort;
+
+typedef enum {
+  SIG_SLOT,
+  SIG_DEFINED,
+  SIG_PRIMITIVE
+} SigKind;
+
+typedef struct {
+  const char *name;
+  SigSort sort;
+  SigKind kind;
+} SigRow;
+
+static const SigRow SIGNATURE[] = {
+  {"Member", SIG_TYPE, SIG_SLOT},
+  {"Choice", SIG_TYPE, SIG_SLOT},
+  {"Outcome", SIG_TYPE, SIG_SLOT},
+  {"Group", SIG_TYPE, SIG_SLOT},
+  {"Config", SIG_TYPE, SIG_DEFINED},
+  {"Orbit", SIG_TYPE, SIG_DEFINED},
+  {"Constitution", SIG_TYPE, SIG_DEFINED},
+  {"Aggregation", SIG_TYPE, SIG_DEFINED},
+  {"ZKWitness", SIG_TYPE, SIG_PRIMITIVE},
+  {"Tally", SIG_TYPE, SIG_DEFINED},
+  {"Ballot_priv", SIG_TYPE, SIG_PRIMITIVE},
+  {"orbitProj", SIG_OP, SIG_DEFINED},
+  {"act", SIG_OP, SIG_SLOT},
+  {"aggregate", SIG_OP, SIG_DEFINED},
+  {"gov", SIG_OP, SIG_DEFINED},
+  {"amend", SIG_OP, SIG_DEFINED},
+  {"castPrivate", SIG_OP, SIG_PRIMITIVE},
+  {"proveZK", SIG_OP, SIG_PRIMITIVE},
+  {"verifyZK", SIG_OP, SIG_PRIMITIVE},
+  {"project", SIG_OP, SIG_PRIMITIVE}
+};
+
+#define SIG_COUNT ((uint32_t)(sizeof SIGNATURE / sizeof SIGNATURE[0]))
+
+/* The slot type of act: Group -> Config -> Config, Config = Member -> Choice. */
+static const Term SIG_MEMBER = {TERM_VAR, 0, 0, "Member", 0, NULL, NULL, NULL};
+static const Term SIG_CHOICE = {TERM_VAR, 0, 0, "Choice", 0, NULL, NULL, NULL};
+static const Term SIG_GROUP = {TERM_VAR, 0, 0, "Group", 0, NULL, NULL, NULL};
+static const Term SIG_CONFIG = {TERM_PI, 0, 0, NULL, 0, NULL, &SIG_MEMBER, &SIG_CHOICE};
+static const Term SIG_STEP = {TERM_PI, 0, 0, NULL, 0, NULL, &SIG_CONFIG, &SIG_CONFIG};
+static const Term SIG_ACT = {TERM_PI, 0, 0, NULL, 0, NULL, &SIG_GROUP, &SIG_STEP};
+
+static int program_def(const Machine *m, const char *name) {
+  uint32_t i = find_def(m, name);
+  return i != NO_DEF && m->defs[i].origin == ORIGIN_PROGRAM;
+}
+
+/* TV is the slot type of ROW: Type 0 for a type slot; for act, the slot type
+   after the program definitions of Member, Choice and Group. */
+static int slot_ok(Checker *c, const SigRow *row, const Value *tv) {
+  uint64_t level = 0;
+  const Core *t;
+  switch (row->sort) {
+  case SIG_TYPE:
+    return conv_values(c->m, c->level, tv, val_univ(c->m, 0u));
+  case SIG_OP:
+    break;
+  }
+  if (!program_def(c->m, "Member") || !program_def(c->m, "Choice") || !program_def(c->m, "Group"))
+    return 0;
+  t = check_type(c, &SIG_ACT, &level);
+  return t != NULL && conv_values(c->m, c->level, tv, here(c, t));
+}
+
+static int check_sig(Checker *c, const Decl *d, const Value *tv) {
+  uint32_t i;
+  for (i = 0; i < SIG_COUNT && strcmp(SIGNATURE[i].name, d->name) != 0; i++)
+    ;
+  if (d->origin != ORIGIN_PROGRAM || i == SIG_COUNT)
+    return 1;
+  switch (SIGNATURE[i].kind) {
+  case SIG_SLOT:
+    return slot_ok(c, &SIGNATURE[i], tv) ? 1 : FAIL(c, "REFUSE_SIG", "the slot %s must have the type %s", d->name, SIGNATURE[i].sort == SIG_TYPE ? "Type 0" : "Group -> (Member -> Choice) -> Member -> Choice, after Member, Choice and Group");
+  case SIG_DEFINED:
+  case SIG_PRIMITIVE:
+    break;
+  }
+  return FAIL(c, "REFUSE_SIG", "%s is a %s name of the design signature (PLAN section 3), reserved until a later slice gives it", d->name, SIGNATURE[i].kind == SIG_DEFINED ? "defined" : "primitive");
+}
+
 static int check_def(Checker *c, const Decl *d) {
   Machine *m = c->m;
   uint64_t level = 0;
@@ -2662,7 +2806,7 @@ static int check_def(Checker *c, const Decl *d) {
   const Value *tv = here(c, t);
   const Core *body = check(c, d->body, tv);
   DefInfo *info = &m->defs[m->def_count];
-  if (body == NULL)
+  if (body == NULL || !check_sig(c, d, tv))
     return 0;
   if (has_history(m) && strcmp(d->name, "init") != 0 && !is_family(tv, m->state_family) && !history_ok(c, body, mentions_state(m, c->level, tv)))
     return 0;
@@ -2736,6 +2880,8 @@ static int check_state(Checker *c, const Decl *d) {
 }
 
 static int check_decl(Checker *c, const Decl *d) {
+  if ((d->is_event || d->is_state) && guest(c))
+    return kit_refused(c, d->is_state ? "the state form" : "an event");
   if (d->is_event)
     return 1;
   if (d->is_state)
@@ -2751,7 +2897,7 @@ static int check_decl(Checker *c, const Decl *d) {
   return d->kind == DECL_FAMILY ? check_family(c, d) : check_def(c, d);
 }
 
-int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
+int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag, CheckMode mode) {
   Checker c;
   size_t ctors = 0;
   size_t i;
@@ -2772,6 +2918,7 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
   memset(&c, 0, sizeof c);
   c.m = m;
   c.decls = decls;
+  c.mode = mode;
   for (i = 0; i < decls->count; i++) {
     c.decl_index = i;
     c.scope = NULL;

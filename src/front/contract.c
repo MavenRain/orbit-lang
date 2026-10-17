@@ -1,6 +1,7 @@
 /* The contract prelude (slice K3a). front_load reads this text after
-   domain/domain.lang, as domain text. Thus rule R1 allows the two families
-   and rule R4 makes their names core names. */
+   domain/domain.lang, as trusted text of origin ORIGIN_KIT (orbit-lang S3).
+   Thus rule R1 allows the two families and rule R4 makes their names core
+   names. A guest program cannot use them (REFUSE_KIT). */
 #include "front/contract.h"
 
 const char contract_source[] =

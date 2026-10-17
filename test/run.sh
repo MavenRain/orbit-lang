@@ -14,7 +14,7 @@ for script in test/run/*.script; do
   prog=examples/$(basename "${script%.script}").lang
   [ -f "$prog" ] || prog=examples/contract.lang
   status=0
-  build/langc run "$prog" "$script" >"$tmp/out" 2>"$tmp/err" || status=$?
+  build/langc --kit run "$prog" "$script" >"$tmp/out" 2>"$tmp/err" || status=$?
   runs=$((runs + 1))
   if [ "$status" -ne 0 ] || ! cmp -s "${script%.script}.out" "$tmp/out"; then
     echo "FAIL run $script: exit $status: $(head -n 1 "$tmp/err")"
@@ -29,7 +29,7 @@ refused=0
 run_refused() {
   printf '%s\n' "$4" >"$tmp/bad.script"
   status=0
-  build/langc run "$3" "$tmp/bad.script" 2>"$tmp/err" >/dev/null || status=$?
+  build/langc --kit run "$3" "$tmp/bad.script" 2>"$tmp/err" >/dev/null || status=$?
   refused=$((refused + 1))
   case "$status:$(head -n 1 "$tmp/err")" in
     "$1:langc: $2: "*) ;;
@@ -50,7 +50,7 @@ run_refused 1 EVAL_ENTRY examples/map.lang "1 $caller allBooks"
 # A NUL cannot hide extra words. Calls before the bad line keep their output.
 printf '1 %s balance\n2 %s deposit 5u\000 6u\n' "$caller" "$caller" >"$tmp/bad.script"
 status=0
-build/langc run examples/contract.lang "$tmp/bad.script" >"$tmp/out" 2>"$tmp/err" || status=$?
+build/langc --kit run examples/contract.lang "$tmp/bad.script" >"$tmp/out" 2>"$tmp/err" || status=$?
 printf '1 balance = 0u\n' >"$tmp/want"
 refused=$((refused + 1))
 case "$status:$(head -n 1 "$tmp/err")" in
@@ -64,7 +64,7 @@ esac
 echo "run refusals: $refused checked"
 
 status=0
-build/langc run examples/contract.lang 2>/dev/null || status=$?
+build/langc --kit run examples/contract.lang 2>/dev/null || status=$?
 [ "$status" -eq 2 ] || { echo "FAIL run usage: want exit 2, got $status"; fail=$((fail + 1)); }
 rm -rf "$tmp"
 echo "run gate: $fail failures"

@@ -31,7 +31,7 @@ static int checked(Arena *arena, Machine *m, Diag *diag, const char *source) {
   diag_init(diag);
   return lex_source(arena, "path-regression", source, strlen(source), &tokens, diag)
       && parse_source(arena, "path-regression", ORIGIN_DOMAIN, &tokens, &decls, diag)
-      && check_program(arena, &decls, m, diag);
+      && check_program(arena, &decls, m, diag, CHECK_KIT);
 }
 
 static int roundtrip(const char *label, const char *prelude, const char *source) {

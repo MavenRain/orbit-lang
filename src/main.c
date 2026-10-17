@@ -31,6 +31,7 @@ typedef struct {
   const char *out_path;
   int runtime;
   int json;
+  CheckMode mode; /* orbit-lang S3: --kit selects the kit mode */
 } Options;
 
 static const struct {
@@ -46,12 +47,13 @@ static const struct {
 };
 
 static int usage(FILE *err) {
-  fputs("usage: langc check PROG\n"
-        "       langc eval PROG NAME [ARGS...]\n"
-        "       langc run PROG SCRIPT\n"
-        "       langc ir PROG\n"
-        "       langc abi PROG [--text]\n"
-        "       langc build PROG [-o OUT] [--runtime]\n", err);
+  fputs("usage: langc [--kit] check PROG\n"
+        "       langc [--kit] eval PROG NAME [ARGS...]\n"
+        "       langc [--kit] run PROG SCRIPT\n"
+        "       langc [--kit] ir PROG\n"
+        "       langc [--kit] abi PROG [--text]\n"
+        "       langc [--kit] build PROG [-o OUT] [--runtime]\n"
+        "--kit: the kit mode, the trusted test scope of the kit gate\n", err);
   return 2;
 }
 
@@ -175,7 +177,7 @@ static int run(const Options *opt, Arena *arena, Diag *diag) {
   DeclList decls;
   if (!front_load(arena, opt->prog_path, text, len, &decls, diag)) return 1;
   Machine machine;
-  if (!check_program(arena, &decls, &machine, diag)) return 1;
+  if (!check_program(arena, &decls, &machine, diag, opt->mode)) return 1;
   switch (opt->command) {
     case CMD_CHECK:
       puts("ok");
@@ -202,10 +204,12 @@ int main(int argc, char **argv) {
   Diag diag;
   diag_init(&diag);
   Options opt;
-  if (!parse_options(argc, argv, &opt, &diag)) {
+  int kit = argc > 1 && strcmp(argv[1], "--kit") == 0;
+  if (!parse_options(argc - kit, argv + kit, &opt, &diag)) {
     diag_print(&diag, stderr);
     return usage(stderr);
   }
+  opt.mode = kit ? CHECK_KIT : CHECK_GUEST;
   Arena arena;
   arena_init(&arena, ARENA_LIMIT_BYTES);
   int status = run(&opt, &arena, &diag);

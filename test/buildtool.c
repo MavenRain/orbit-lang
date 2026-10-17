@@ -145,7 +145,7 @@ static int closed_pipe(void) {
     if (dup2(fds[1], STDOUT_FILENO) < 0 || dup2(fileno(err), STDERR_FILENO) < 0) _exit(127);
     close(fds[1]);
     fclose(err);
-    execl("build/langc", "langc", "build", "examples/storage.lang", (char *)NULL);
+    execl("build/langc", "langc", "--kit", "build", "examples/storage.lang", (char *)NULL);
     _exit(127);
   }
   close(fds[1]);

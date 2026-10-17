@@ -43,10 +43,11 @@ exit 0
 exit 0
 # examples/events.lang --json
 langc: USAGE: -: abi takes only --text after the program
-usage: langc check PROG
-       langc eval PROG NAME [ARGS...]
-       langc run PROG SCRIPT
-       langc ir PROG
-       langc abi PROG [--text]
-       langc build PROG [-o OUT] [--runtime]
+usage: langc [--kit] check PROG
+       langc [--kit] eval PROG NAME [ARGS...]
+       langc [--kit] run PROG SCRIPT
+       langc [--kit] ir PROG
+       langc [--kit] abi PROG [--text]
+       langc [--kit] build PROG [-o OUT] [--runtime]
+--kit: the kit mode, the trusted test scope of the kit gate
 exit 2

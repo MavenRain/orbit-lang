@@ -36,7 +36,7 @@ word() {
 # from the `langc abi` line of NAME (C-K4-16): Nat uint64, Flag bool, U256
 # uint256 and Addr address. Env and State are not arguments of the call.
 types() {
-  build/langc abi "$1" --text >"$tmp/types" || return 1
+  build/langc --kit abi "$1" --text >"$tmp/types" || return 1
   awk -v n="$2" '$3 != "event" && index($2, n "(") == 1 {
     s = substr($2, length(n) + 2)
     print substr(s, 1, length(s) - 1)
@@ -133,7 +133,7 @@ genesis() {
 # new account, tmp/raw and tmp/got its storage.
 deploy() {
   genesis 0 ''
-  _hex=$(build/langc build "$1") || return 1
+  _hex=$(build/langc --kit build "$1") || return 1
   evm run --prestate "$tmp/pre.json" --create --code "$_hex" --dump >"$tmp/dump" 2>&1 || return 1
   awk '$1 == "\"code\":" { v = $2; gsub(/[",]/, "", v); print tolower(substr(v, 3)); exit }' "$tmp/dump" >"$tmp/code"
   [ -s "$tmp/code" ] || return 1

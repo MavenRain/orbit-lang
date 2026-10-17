@@ -267,6 +267,7 @@ typedef struct {
   uint32_t first_ctor;
   uint32_t ctor_count;
   uint64_t universe; /* the largest universe of a constructor field */
+  Origin origin;     /* ORIGIN_KIT for Env and Out (orbit-lang S3) */
 } FamilyInfo;
 
 typedef struct {

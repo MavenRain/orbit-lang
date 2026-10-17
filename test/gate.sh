@@ -3,8 +3,14 @@
 set -eu
 fail=0
 count=0
+# kit LIST FILE prints --kit when FILE is a line of LIST. A row whose text uses a
+# kit name or a Nat or word literal is a kit row (orbit-lang S3); the others run
+# in guest mode.
+kit() {
+  if [ -f "$1" ] && rg -q -x -F "$2" "$1"; then echo --kit; fi
+}
 for prog in examples/*.lang; do
-  out=$(build/langc check "$prog" 2>&1) || true
+  out=$(build/langc $(kit examples/kit.txt "${prog#examples/}") check "$prog" 2>&1) || true
   count=$((count + 1))
   if [ "$out" != "ok" ]; then
     echo "FAIL $prog: $out"
@@ -26,7 +32,7 @@ refusals() {
     path="$1/$file"
     [ "$file" = "deep.lang" ] && path="$tmp/deep.lang"
     status=0
-    build/langc check "$path" 2>"$tmp/err" >/dev/null || status=$?
+    build/langc $(kit "$1/kit.txt" "$file") check "$path" 2>"$tmp/err" >/dev/null || status=$?
     first=$(head -n 1 "$tmp/err")
     checked=$((checked + 1))
     case "$status:$first" in
@@ -39,8 +45,23 @@ refusals() {
 refusals test/parse parse
 refusals test/check check
 
+# A REFUSE_KIT row refuses a kit item in guest mode only: `langc --kit check`
+# must print ok.
+kit_only=0
+while read -r file code; do
+  [ "$code" = "REFUSE_KIT" ] || continue
+  status=0
+  out=$(build/langc --kit check "test/check/$file" 2>&1) || status=$?
+  kit_only=$((kit_only + 1))
+  if [ "$status:$out" != "0:ok" ]; then
+    echo "FAIL $file: want ok under --kit, got exit $status: $out"
+    fail=$((fail + 1))
+  fi
+done <test/check/expect.txt
+echo "kit-only refusals: $kit_only checked"
+
 # A refl refusal shows both normal forms.
-build/langc check test/check/bad-refl.lang 2>"$tmp/err" >/dev/null || true
+build/langc $(kit test/check/kit.txt bad-refl.lang) check test/check/bad-refl.lang 2>"$tmp/err" >/dev/null || true
 if ! rg -q -F 'the path at i1 is 1201, but the type needs 1200' "$tmp/err"; then
   echo "FAIL bad-refl.lang: the message does not show both normal forms"
   fail=$((fail + 1))
@@ -57,7 +78,7 @@ while IFS= read -r line; do
   name=$2
   shift 2
   status=0
-  got=$(build/langc eval "examples/$file.lang" "$name" "$@" 2>"$tmp/err") || status=$?
+  got=$(build/langc $(kit examples/kit.txt "$file.lang") eval "examples/$file.lang" "$name" "$@" 2>"$tmp/err") || status=$?
   first=$(head -n 1 "$tmp/err")
   want_err=""
   [ "$want" = "trap" ] && want_err="langc: EVAL_OVERFLOW: $name: "
@@ -69,14 +90,14 @@ while IFS= read -r line; do
 done <test/eval/expect.txt
 echo "evals: $evals checked"
 
-# eval_refused STATUS CODE NAME [ARGS]: `langc eval examples/entries.lang NAME
-# ARGS` must exit STATUS and print `langc: CODE: NAME: ...` on stderr.
+# eval_refused STATUS CODE NAME [ARGS]: `langc --kit eval examples/entries.lang
+# NAME ARGS` must exit STATUS and print `langc: CODE: NAME: ...` on stderr.
 eval_refused() {
   want_status=$1
   code=$2
   shift 2
   status=0
-  build/langc eval examples/entries.lang "$@" 2>"$tmp/err" >/dev/null || status=$?
+  build/langc --kit eval examples/entries.lang "$@" 2>"$tmp/err" >/dev/null || status=$?
   case "$status:$(head -n 1 "$tmp/err")" in
     "$want_status:langc: $code: $1: "*) ;;
     *) echo "FAIL eval $*: want exit $want_status and $code, got exit $status"; fail=$((fail + 1)) ;;
@@ -91,6 +112,9 @@ eval_refused 1 EVAL_ENTRY nope
 status=0
 build/langc 2>/dev/null || status=$?
 [ "$status" -eq 2 ] || { echo "FAIL usage: want exit 2, got $status"; fail=$((fail + 1)); }
+status=0
+build/langc --kit 2>/dev/null || status=$?
+[ "$status" -eq 2 ] || { echo "FAIL usage --kit: want exit 2, got $status"; fail=$((fail + 1)); }
 status=0
 build/langc check "$tmp/missing.lang" 2>/dev/null || status=$?
 [ "$status" -eq 2 ] || { echo "FAIL missing file: want exit 2, got $status"; fail=$((fail + 1)); }

@@ -129,7 +129,7 @@ abstraction and application, transp, hcomp, Glue and unglue).
 
 Kit items (default O3, the strict reading):
 
-| Kit item | S3 action |
+| Kit item | S3 action (DONE 2026-10-17) |
 |---|---|
 | Nat, U256, Addr, Flag and their operations | Not guest-visible. They stay inside the lowerer as carriers for Tally counts, member keys, poll ids and proof words. |
 | sealed-lang base ops natDiv, natMod, hash, ecrecover, ecAdd, ecMul, ecPairing, addrToU256 (guest-visible since the S2 port of sealed-lang bc8e168) | Not guest-visible. The lowerer keeps them for the tree index, the nullifier hash and the S8 curve code. |
@@ -138,6 +138,11 @@ Kit items (default O3, the strict reading):
 | Eq formers (refl, symm, trans, cong, transport) | None. The S2 port removed them (sealed-lang R3). Path replaces them. |
 | Former terms (pair, inl, fold, unfold, map, bind, and the rest) | Kept. These are formers, not base items. |
 | sample domain Color, Item, Stack, Lot | None. The S2 port removed it (sealed-lang R21). |
+
+S3 is DONE (2026-10-17): the kit names and the 8 sealed-lang base ops
+are INTERNAL, the literals and the `state` and `event` declarations are
+kit-mode forms, and guest code that uses one of them is REFUSE_KIT
+(section 8 "Builder call (S3, 2026-10-16)", docs/STATUS.md "## S3").
 
 Counts, β and member indices are built from formers: Nat is the initial
 algebra of `1 + X`. The lowerer maps a Nat-shaped algebra to a word (the
@@ -309,7 +314,7 @@ for each build), the counts in docs/STATUS.md, and a USER commit.
 | S0 | seed: design, plan, kit scaffold | kit gate GREEN |
 | S1 | rulings on O1 to O20: DONE 2026-10-16, all defaults, proof irrelevance prohibited | none |
 | S2 | DONE 2026-10-16: port of the sealed-lang S2 to S4 kernel (paths, Kan operations, HITs, QITs, truncations), sample domain removed, EVM runner precompiles 0x01, 0x06, 0x07, 0x08 (sealed-lang bc8e168) | Prop and SProp as a type and as a name; 4 irrelevance marker spellings; refl between different Trunc1, Trunc0 and isProp elements; a path of paths between different loops; precompile vectors (EIP-196, EIP-197) |
-| S3 | base-span pruning: the kit items and the sealed-lang base ops natDiv, natMod, hash, ecrecover, ecAdd, ecMul, ecPairing, addrToU256 made internal (section 4); the 11 types and 9 operations declared | refusals for a kit name and for a sealed-lang base op in guest code |
+| S3 | DONE 2026-10-17: base-span pruning: the kit items and the sealed-lang base ops natDiv, natMod, hash, ecrecover, ecAdd, ecMul, ecPairing, addrToU256 made internal (section 4); the 11 types and 9 operations declared | refusals for a kit name and for a sealed-lang base op in guest code (22 REFUSE_KIT rows, each `ok` under `langc --kit`); 6 REFUSE_SIG rows for the design signature |
 | S4 | Orbit as a quotient of the voter orbits (the HIT, QIT and truncation formers came with the S2 port) | Orbit fold without isSet, wrong Orbit boundary, Orbit path at run time |
 | S5 | Glue, ua, uaBeta, hcomp at U (coin-lang merge) | Glue boundary mismatch, ua on a non-equivalence |
 | S6 | HIITs and QIITs | wrong index in a path constructor, inductive-inductive order, missing coherence case |
@@ -326,6 +331,44 @@ same list) gave 0 conflict hunks. 705ab9f and b4a5dce conflict only in
 docs, so S2 applies their code paths and kit docs by hand. The rule is
 "port first, prune second": S2 ports the sealed-lang S2 to S4 kernel, S3
 prunes the base span, S4 makes Orbit a quotient. No slice is dropped.
+
+Builder call (S3, 2026-10-16): mechanism (a), a visibility tag at name
+resolution. Each BUILTINS row and each core type has the tag GUEST or
+INTERNAL. INTERNAL rows: Nat, U256, Addr, Flag, Map and all their
+operations, natDiv, natMod, hash, ecrecover, ecAdd, ecMul, ecPairing,
+addrToU256, mapEmpty, mapGet, mapSet. The contract prelude (contract.c:
+Env, makeEnv, now, caller, Out, pay, pull, emit) gets its own origin
+ORIGIN_KIT, and its names are INTERNAL. GUEST rows: the formers, the
+interval, Path, the Kan operations, the universes and the domain.lang
+names. In guest mode a declaration from the program cannot resolve an
+INTERNAL name, cannot use a Nat or word literal, and cannot declare
+`state` or `event`: each is REFUSE_KIT. INTERNAL names resolve in the
+trusted prelude scope (ORIGIN_DOMAIN, ORIGIN_KIT) and under `langc --kit`,
+the kit mode that the kit gate scripts pass. The kit names stay reserved
+(rule R4) in both modes, because the lowerer finds `Env`, `Out` and
+`State` by name. Reasons against (b), a guest pass after elaboration: a
+literal or a `state` declaration has no name to find after elaboration,
+and one refusal site at resolution is one mutant target. A kit row (one
+that uses a kit name or a literal) is listed in `examples/kit.txt` or
+`test/check/kit.txt` and runs under `--kit`. Its expected text does not
+change. Each REFUSE_KIT row must also give `ok` under `--kit`, so the
+refusal comes from the mode only. This does not change O3, O4 or O15:
+the kit mode is a trusted test scope, not a guest form.
+
+The design signature in S3 (section 3, O4) is the table SIGNATURE in
+check.c: 11 types and 9 operations, each with its kind. Slots (Member,
+Choice, Outcome, Group, act): a program definition with a slot name must
+have the slot type: `Type 0` for the four types, and
+`Group -> (Member -> Choice) -> Member -> Choice` for act (Config
+expanded), after the four type slots. Otherwise REFUSE_SIG. Primitives
+(Ballot_priv, ZKWitness, castPrivate, proveZK, verifyZK, project): the
+names are reserved (REFUSE_SIG). The kit gives their carriers and
+operations in S8, because their types need the slots of the DAO
+declaration and the ring-signature words. Defined names (Config, Orbit,
+Constitution, Aggregation, Tally, orbitProj, aggregate, gov, amend): the
+names are reserved (REFUSE_SIG). S4 gives Orbit, and the S7 prelude
+gives the rest. S3 adds no binder, no universe and no declaration form,
+so no new Prop-like form opens.
 
 ## 9. Open items
 

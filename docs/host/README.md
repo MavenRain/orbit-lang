@@ -2,6 +2,16 @@
 
 The TinyCC host kit. lang-template made it for retainer-lang, and orbit-lang uses it. It compiles the contract language to EVM bytecode.
 
+In orbit-lang S3, `langc` checks guest programs by default. Kit types,
+operations, literals, contracts and events require `--kit` before the
+command. For example, `build/langc --kit run examples/contract.lang
+test/run/basic.script` runs the kit contract, while `build/langc check
+examples/signature.lang` checks the guest signature example. Without
+`--kit`, a kit example exits 1 with `REFUSE_KIT`. All contract examples
+and abbreviated contract commands in this guide use kit mode. The gate
+selects modes from the `kit.txt` lists; `--kit` is the trusted kit test
+scope described in `docs/PLAN.md`, section 8.
+
 ## Origin
 
 - The front end, `src/main.c`, `src/ir.h`, `src/target.h`, `gen/`, `domain/`, `examples/` and `test/gate.sh` are copies of `hosts/tcc-wasm`. The SHA-256 of each source file is in `lang-template-work/tcc-evm-contract-snapshot.txt`, with a list of the changes.
@@ -309,9 +319,9 @@ Erasure: a point constructor value lowers as a family value lowers. A path const
 ## Commands
 
 - `make check`: the tcc build with `-Wall -Werror`, the clang syntax pass, `test/gate.sh`, `test/run.sh`, `test/asm.sh`, `test/build.sh`, `test/dispatch.sh`, `test/evm.sh`, `test/precompile.sh`, `test/mock.sh` and `test/diff.sh`. `test/asm.sh`, `test/build.sh`, `test/dispatch.sh`, `test/evm.sh`, `test/precompile.sh`, `test/mock.sh` and `test/diff.sh` need geth `evm` on PATH.
-- `build/langc check FILE` and `build/langc eval FILE`: as in tcc-wasm.
-- `build/langc run PROG SCRIPT`: does the calls in `SCRIPT` on the program `PROG`. Refer to `## Contracts (slice K3)`. `test/run.sh` runs each `test/run/NAME.script` on `examples/contract.lang` and compares the output with `test/run/NAME.out`. It also has 8 refusal rows and a usage row. `build/runtool` checks fresh fuel for initialization and call classification.
-- `build/langc build FILE [-o OUT] [--runtime]` writes the creation code (with `--runtime`, the runtime code: the dispatcher and the entry blocks) as one line of lowercase hex. Refer to `## EVM output (slice K4)`.
+- `build/langc [--kit] check FILE` and `build/langc [--kit] eval FILE NAME [ARGS...]`: as in tcc-wasm.
+- `build/langc --kit run PROG SCRIPT`: does the calls in `SCRIPT` on the program `PROG`. Refer to `## Contracts (slice K3)`. `test/run.sh` runs each `test/run/NAME.script` on `examples/contract.lang` and compares the output with `test/run/NAME.out`. It also has 8 refusal rows and a usage row. `build/runtool` checks fresh fuel for initialization and call classification.
+- `build/langc --kit build FILE [-o OUT] [--runtime]` writes the creation code (with `--runtime`, the runtime code: the dispatcher and the entry blocks) as one line of lowercase hex. Refer to `## EVM output (slice K4)`.
 - `build/asmtool`: the assembler self-test. `build/asmtool runtime|creation|abi` writes the test program or its ABI line. `build/asmtool mock` writes the runtime of the mock ERC-20 token for `test/mock.sh`.
 
 The tool versions and the test path for K4 are in `docs/CAPABILITY.md`.

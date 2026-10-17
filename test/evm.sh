@@ -22,7 +22,7 @@ mkdir -p "$tmp"
 # words. test/abi.expect holds the cast check of the topics.
 wantlogs() {
   : >"$tmp/wantlogs"
-  build/langc abi "$1" --text >"$tmp/abi" || : >"$tmp/abi"
+  build/langc --kit abi "$1" --text >"$tmp/abi" || : >"$tmp/abi"
   awk -v k="$2" '/^[^ ]/ { p = ($1 == k); next } p && $1 == "event"' "$tmp/run" >"$tmp/events"
   while read -r _ev _evname _evargs; do
     _topic=$(awk -v n="$_evname" '$3 == "event" && index($2, n "(") == 1 { print substr($1, 3) }' "$tmp/abi")
@@ -50,7 +50,7 @@ chain() {
     _now=$1 _caller=$2 _name=$3
     shift 3
     steps=$((steps + 1))
-    if ! build/langc run "$_prog" "$tmp/prefix" >"$tmp/run" 2>"$tmp/err"; then
+    if ! build/langc --kit run "$_prog" "$tmp/prefix" >"$tmp/run" 2>"$tmp/err"; then
       echo "FAIL evm $_script:$_k: langc run: $(head -n 1 "$tmp/err")"
       fail=$((fail + 1))
       return
@@ -96,20 +96,20 @@ chain() {
 for _p in examples/contract.lang examples/map.lang examples/residuals.lang examples/events.lang \
   test/lower/emit.lang; do
   echo "# $_p --text"
-  build/langc abi "$_p" --text 2>&1
+  build/langc --kit abi "$_p" --text 2>&1
   echo "exit $?"
 done >"$tmp/abi.got"
 # The JSON ABI (Q-K4-3, the default since C-c7-1) of the two programs with
 # events. `cast interface` reads each array (K4c s8). The gate does not run cast.
 for _p in examples/contract.lang examples/events.lang; do
   echo "# $_p"
-  build/langc abi "$_p" 2>&1
+  build/langc --kit abi "$_p" 2>&1
   echo "exit $?"
 done >>"$tmp/abi.got"
 # A flag other than --text after the program is a USAGE error (C-c7-1, O-c14-1).
 {
   echo "# examples/events.lang --json"
-  build/langc abi examples/events.lang --json 2>&1
+  build/langc --kit abi examples/events.lang --json 2>&1
   echo "exit $?"
 } >>"$tmp/abi.got"
 if ! cmp -s test/abi.expect "$tmp/abi.got"; then
