@@ -2,10 +2,82 @@
 
 The front end of this kit is a copy of the tcc-wasm front end. `langc check`
 and `langc eval` accept the formers F1 to F15 as that front end does.
-`test/gate.sh` runs the forked examples on them.
+`test/gate.sh` runs the examples on them.
 
-The EVM output is PLANNED for each former. Slice K4 adds the lowering to EVM
-bytecode. Until then, `langc build` stops with `langc: PLANNED`.
+## EVM output (slice K4, done in the kit)
 
-When a slice adds the lowering of a former, record its status and the test
-that shows it in this file.
+`langc build` lowers a contract to EVM bytecode (docs/host/README.md,
+section `EVM output`). The facts a program author needs:
+
+- The state is a list of word fields: Nat, Flag, U256 and Addr. A `List T`
+  field holds words (T a word type). A `Map K V` field holds one word per
+  key. An Option field, a Prod field, a nested List, a List over a type
+  that is not a word give REFUSE_LOWER (K4a). Map keys must be Nat, U256
+  or Addr; values must be Nat, Flag, U256 or Addr. Other Map types give
+  REFUSE_MAP during checking. A Map nested in another state field gives
+  REFUSE_STATE.
+- An entry body lowers to first-order word code: the word values, Option,
+  Prod, `flagIf` and `if`. `some (pair STATE OUT)` stores the changed
+  fields, `none` reverts, a trap reverts with `Trap()` (K4b).
+- A view returns one word (K4c). A residual `fold` over a List field runs
+  its body once per element, from the last element to the head. Its seed
+  and step must lower to words. If either can trap, the step must be
+  provably strict in its accumulator, or the build gives REFUSE_LOWER.
+  A residual fold at a word position that is not over a List field also
+  gives REFUSE_LOWER (K4c). Folds that normalize to words before lowering,
+  such as a sum over a closed `cons` chain, can build.
+- `pay` and `pull` are token CALLs (K4d). `emit` has no EVM form: use a
+  named event.
+- The formers F1 to F15 are checked and evaluated (F12 and F13 as `Path`
+  since sealed-lang S3). On the EVM only the first-order word residual of a body
+  lowers. A residual of another form gives REFUSE_LOWER
+  (`test/lower/expect.txt`, 13 rows).
+
+## The base span (sealed-lang S2, ported in orbit-lang S2)
+
+| Op | `check` and `eval` | EVM | Test |
+|---|---|---|---|
+| `natDiv`, `natMod` | DONE. A divisor 0 traps. | DONE: DIV and MOD with the zero trap. | The `ratio` and `remainder` eval rows of `examples/entries.lang`; `leafStep` in `test/precompile.sh`. |
+| `hash` | DONE: KECCAK256 of two words (`src/keccak.c`). | DONE: the IR op KECCAK. | The eval row `precompile hashZero`; the chain step `hashv`. |
+| `addrToU256` | DONE. | DONE: the word itself. | The eval row `ownerWord`; the chain step `addrWord`. |
+| `ecrecover` | OPAQUE: a closed application stays stuck. | DONE: one STATICCALL to precompile 1; the output word is stored 0 first. | The chain steps `recover` and `recoverSum`. |
+| `ecAdd`, `ecMul` | OPAQUE. | DONE: one STATICCALL to 6 or 7; the result is a two-word block; `first` and `second` read it. | The chain steps `addX`, `addY`, `mulX`, `mulY`, `addBad`. |
+| `ecPairing` | OPAQUE. | DONE: one STATICCALL to 8 over a closed list of pairs, 6 words per pair. An open list gives REFUSE_LOWER. | The chain steps `pairOk` and `pairNil`; `test/lower/pairing-open.lang`. |
+
+Removed in sealed-lang S2 (R19): `natMul`, `u256Mul`, `u256Div` and `u256Min`
+(`test/check/pruned-op.lang` expects NAME_UNKNOWN). Removed in sealed-lang S2 (R21):
+the sample domain. `test/precompile.sh` is the only check of the curve
+words: each constant was confirmed by a direct `evm run --input` to the
+precompile before it entered the script.
+
+## Paths (sealed-lang S3, ported in orbit-lang S2)
+
+| Op | `check` and `eval` | EVM | Test |
+|---|---|---|---|
+| `I`, `i0`, `i1`, `~`, `/\`, `\/` | DONE: the interval and its De Morgan algebra. `I` is not a type: only a path abstraction or a PathP line binds an interval variable. | Erased. | `examples/paths.lang`; INTERVAL_TYPE rows `interval-type.lang`, `interval-pi.lang`, `interval-path.lang`. |
+| `PathP`, `Path`, `refl`, `@` | DONE: a path abstraction must meet its ends. No rule makes two paths with the same ends equal (no UIP). | Erased. A path residual at a word position gives REFUSE_LOWER. | `examples/paths.lang`; PATH_END rows `path-end.lang`, `bad-refl.lang`; PATH_UIP rows `path-uip.lang`, `path-k.lang`, `path-ev.lang`; `test/lower/path-word.lang`. |
+| `sym`, `cong` | DONE. | Erased. | The eval rows `equality back`, `equality backEnd`; the PATH_UIP row `path-sym.lang`; pathtool "dependent symmetry", "dependent congruence". |
+| `funExt` | DONE in `check` only: it elaborates to a path abstraction (R29). | Erased. | `examples/paths.lang` `pointwise`; pathtool "dependent function extensionality". |
+| `transp` | DONE: the identity on a base line (Nat, Flag, U256, Addr, Unit, Map; R27); Pi, Sigma, data and universe lines reduce. | Normalizes before lowering; a remaining Kan operation at a word position gives REFUSE_LOWER. | The eval rows `kan evPi`, `kan evPair`; TRANSP_LINE row `transp-line.lang`; pathtool "stuck transport fill". |
+| `hcomp` | DONE: a system of faces. At the R27 base types on a face other than `i1`, a literal base is returned only when every live branch evaluates to that literal at a fresh interval; otherwise it stays stuck, as does a neutral base. On `i1`, a true system branch is selected at `i1`. Each step spends `m->fuel` (R28). | Normalizes before lowering; a remaining Kan operation at a word position gives REFUSE_LOWER. | The eval row `kan evTrans`; rows `system-cover.lang`, `system-overlap.lang`, `hcomp-cap.lang`, `hcomp-universe.lang`; pathtool "hcomp over a literal word base". |
+
+The kit `Eq` is out since sealed-lang S3 (sealed-lang O3): the six Eq rows of BUILTINS. `transport`,
+`subst`, `J`, `JRefl` and `trans` are guest defs in `domain/domain.lang`
+(R25). `build/pathtool` (`test/pathtool.c`) does 19 quote and parse
+roundtrips. The existing EVM regressions still pass with the sealed-lang S2 counts
+(evm 43, diff 15, emit 24). Path-specific EVM coverage includes the
+refusal of a remaining hcomp at a word position (`test/lower/path-word.lang`).
+
+## HITs and QITs (sealed-lang S4, ported in orbit-lang S2)
+
+| Form | `check` and `eval` | EVM | Test |
+|---|---|---|---|
+| Path constructor | DONE: a `family` constructor with interval fields `(i : I)` and a boundary system; each boundary is checked (HIT_BOUNDARY). A constructor of dimension 2 (squash0, quotSquash) has path fields. At an end it reduces to its boundary; at a neutral interval it stays neutral. No rule makes `loop` equal to `refl`. | A point constructor value lowers as a family value. A path constructor residual is not a word: REFUSE_LOWER (R31). | `examples/circle.lang`; PATH_UIP row `loop-not-refl.lang`; fronttool `domain` rows (HIT_BOUNDARY); DOMAIN_FAMILY row `state-boundary.lang`; pathtool "path constructor at a neutral interval". |
+| `fold` over a HIT | DONE: one case for each path constructor, at the type of its boundary. A fold of Trunc0 or Quot needs the isSet case. `fold_path` applies the path case at the interval; `fold_hcomp` maps to `hcomp` on the target type (R33); `fold_square` folds the path fields of a square. | At an end the fold gives the point case. A stuck `hcomp` on a word type gives REFUSE_LOWER. | TYPE_MISMATCH rows `fold-missing-path.lang`, `trunc0-no-set.lang`; PATH_END row `fold-path-boundary.lang`; the eval rows `trunc truncMapped`, `quot toTrunc3`; `test/lower/loop-word.lang`; pathtool "fold boundary maps a point constructor path field", "fold square boundary preserves captured intervals in path fields". |
+| `hcomp` at a HIT | DONE: a composite of path constructor values is a formal hcomp (a canonical value). | Erased. REFUSE_LOWER at a word position. | `examples/circle.lang` `loop2`; pathtool "formal hcomp at a HIT". |
+| `transp` at a HIT | DONE: the identity at a family with no parameters. Along a parameter line `transp_family` reduces and keeps a boundary that depends on the parameter; squash0 stays stuck. | Erased. | `examples/circle.lang` `transpBase`; PATH_UIP row `squash0-not-rebuild.lang`; pathtool "transport of a formal hcomp at Trunc1 along a parameter line", "transport preserves a parameter-dependent HIT boundary", "transport of squash0 along a parameter line stays stuck". |
+
+Sealed-lang S4 adds no BUILTINS row (66). The families S1, Trunc1, Trunc0 and Quot
+are in `domain/domain.lang` (R32). `build/pathtool` does 26 quote and
+parse roundtrips. The EVM regressions did not change at any sealed-lang S4 step (evm
+43, diff 15, emit 24, runs 5, run refusals 10): a HIT value is erased.

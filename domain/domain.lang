@@ -1,19 +1,49 @@
--- Sample domain. Replace it with your design. See domain/README.md.
+-- The domain file. sealed-lang S2 (R21) removed the kit sample (ported in
+-- orbit-lang S2). The DAO prelude comes in S7.
 -- Each family, constructor, field and def name here becomes a core name
 -- (rule R4). Only this file can declare a family (rule R1).
-family Color := red | green | blue
-family Item := makeItem (itemColor : Color) (itemPrice : Nat) (itemCount : Nat)
-family Stack := bottom | push (top : Nat) (rest : Stack)
--- An indexed family (former F15): `Lot 3` is a lot of size 3.
-family Lot (size : Nat) := makeLot (lotPrice : Nat)
 
-def lineTotal : (item : Item) -> Nat :=
-  fun (item : Item) => natMul (itemPrice item) (itemCount item)
-def isRed : (color : Color) -> Flag :=
-  fun (color : Color) => fold flagYes flagNo flagNo color
-def total : (items : List Item) -> Nat :=
-  fun (items : List Item) => fold (fun (item : Item) (acc : Nat) => natAdd (lineTotal item) acc) 0 items
-def redTotal : (items : List Item) -> Nat :=
-  fun (items : List Item) => total (filter (fun (item : Item) => isRed (itemColor item)) items)
-def depth : (s : Stack) -> Nat :=
-  fun (s : Stack) => fold 0 (fun (top : Nat) (rest : Nat) => natAdd rest 1) s
+-- Kan library (ported from sealed-lang, R6 (a)): transport, subst, J and the
+-- J rule as a path (JRefl, sealed-lang O11), all by transp.
+def transport : (X : Type 0) -> (Y : Type 0) -> Path (Type 0) X Y -> X -> Y :=
+  fun (X : Type 0) => fun (Y : Type 0) => fun (p : Path (Type 0) X Y) => fun (a : X) => transp (fun (i : I) => p @ i) i0 a
+def subst : (A : Type 0) -> (B : A -> Type 0) -> (x : A) -> (y : A) -> Path A x y -> B x -> B y :=
+  fun (A : Type 0) => fun (B : A -> Type 0) => fun (x : A) => fun (y : A) => fun (p : Path A x y) => fun (b : B x) =>
+    transp (fun (i : I) => B (p @ i)) i0 b
+def J : (A : Type 0) -> (x : A) -> (P : (y : A) -> Path A x y -> Type 0) -> P x refl -> (y : A) -> (p : Path A x y) -> P y p :=
+  fun (A : Type 0) => fun (x : A) => fun (P : (y : A) -> Path A x y -> Type 0) => fun (d : P x refl) => fun (y : A) => fun (p : Path A x y) =>
+    transp (fun (i : I) => P (p @ i) (fun (j : I) => p @ (i /\ j))) i0 d
+def JRefl : (A : Type 0) -> (x : A) -> (P : (y : A) -> Path A x y -> Type 0) -> (d : P x refl) -> Path (P x refl) (J A x P d x refl) d :=
+  fun (A : Type 0) => fun (x : A) => fun (P : (y : A) -> Path A x y -> Type 0) => fun (d : P x refl) =>
+    fun (i : I) => transp (fun (_ : I) => P x refl) i d
+-- Path composition (S2b, R2 (a)): trans by hcomp, with the tube x on ~j
+-- and q on j, and the base p.
+def trans : (A : Type 0) -> (x : A) -> (y : A) -> (z : A) -> Path A x y -> Path A y z -> Path A x z :=
+  fun (A : Type 0) => fun (x : A) => fun (y : A) => fun (z : A) => fun (p : Path A x y) => fun (q : Path A y z) =>
+    fun (j : I) => hcomp A (~j \/ j) (fun (i : I) => [ ~j -> x, j -> q @ i ]) (p @ j)
+-- Propositions and sets (S4b): the squash1 fold case has the type
+-- isProp RES, the squash0 and quotSquash fold cases the type isSet RES.
+def isProp : (A : Type 0) -> Type 0 :=
+  fun (A : Type 0) => (x : A) -> (y : A) -> Path A x y
+def isSet : (A : Type 0) -> Type 0 :=
+  fun (A : Type 0) => (x : A) -> (y : A) -> isProp (Path A x y)
+
+-- The circle, a higher inductive family (S4a, R1 (a)). The path
+-- constructor loop goes from base to base.
+family S1 := base | loop (i : I) [ ~i -> base, i -> base ]
+-- The propositional truncation (S4b, R5 (a)): squash1 is a path between
+-- any two points, so the squash1 fold case has the type isProp RES. A
+-- field name is a core name (rule R4), so the names have a family prefix.
+family Trunc1 (A : Type 0) := trunc1 (truncOf : A) | squash1 (squashFrom : Trunc1 A) (squashTo : Trunc1 A) (i : I) [ ~i -> squashFrom, i -> squashTo ]
+-- The set truncation (S4c, R5 (a)): squash0 is a square between any two
+-- paths with the same ends, so the squash0 fold case has the type isSet
+-- RES (R8 (a)). The case binds the folded ends and the folded paths.
+family Trunc0 (A : Type 0) := trunc0 (trunc0Of : A) | squash0 (squash0From : Trunc0 A) (squash0To : Trunc0 A) (squash0Left : Path (Trunc0 A) squash0From squash0To) (squash0Right : Path (Trunc0 A) squash0From squash0To) (i : I) (j : I) [ ~i -> squash0Left @ j, i -> squash0Right @ j, ~j -> squash0From, j -> squash0To ]
+-- The set quotient (S4c, R5 (a)): quotEq is a path from quot A R a to
+-- quot A R b for each proof r of R a b. The type of the R parameter uses
+-- the A parameter. quotSquash has the squash0 shape at Quot A R, so the
+-- quotSquash fold case has the type isSet RES (R8 (a)).
+family Quot (A : Type 0) (R : A -> A -> Type 0) := quot (quotOf : A)
+  | quotEq (quotA : A) (quotB : A) (quotR : R quotA quotB) (i : I) [ ~i -> quot A R quotA, i -> quot A R quotB ]
+  | quotSquash (quotFrom : Quot A R) (quotTo : Quot A R) (quotLeft : Path (Quot A R) quotFrom quotTo) (quotRight : Path (Quot A R) quotFrom quotTo) (i : I) (j : I)
+    [ ~i -> quotLeft @ j, i -> quotRight @ j, ~j -> quotFrom, j -> quotTo ]

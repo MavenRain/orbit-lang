@@ -129,14 +129,15 @@ abstraction and application, transp, hcomp, Glue and unglue).
 
 Kit items (default O3, the strict reading):
 
-| Kit item | S2 action |
+| Kit item | S3 action |
 |---|---|
 | Nat, U256, Addr, Flag and their operations | Not guest-visible. They stay inside the lowerer as carriers for Tally counts, member keys, poll ids and proof words. |
+| sealed-lang base ops natDiv, natMod, hash, ecrecover, ecAdd, ecMul, ecPairing, addrToU256 (guest-visible since the S2 port of sealed-lang bc8e168) | Not guest-visible. The lowerer keeps them for the tree index, the nullifier hash and the S8 curve code. |
 | Map (mapEmpty, mapGet, mapSet) | Not guest-visible. The lowerer uses it for the nullifier set. |
 | `state`, Env, entries, views, pay, pull, events | Not guest-visible. The compiler writes the contract from the DAO declaration (section 7, O15). |
-| Eq formers (refl, symm, trans, cong, transport) | Removed in S3. Path replaces them (sealed-lang S3 precedent). |
+| Eq formers (refl, symm, trans, cong, transport) | None. The S2 port removed them (sealed-lang R3). Path replaces them. |
 | Former terms (pair, inl, fold, unfold, map, bind, and the rest) | Kept. These are formers, not base items. |
-| sample domain Color, Item, Stack, Lot | Removed in S2 (sealed-lang R21 precedent). |
+| sample domain Color, Item, Stack, Lot | None. The S2 port removed it (sealed-lang R21). |
 
 Counts, β and member indices are built from formers: Nat is the initial
 algebra of `1 + X`. The lowerer maps a Nat-shaped algebra to a word (the
@@ -150,8 +151,8 @@ src/. So the sealed-lang kernel commits apply as cherry-picks.
 
 | Slice | Source | Commits | Gives |
 |---|---|---|---|
-| S3 | sealed-lang | 872b0b4, 9394ffd, 705ab9f | I, PathP, Path, refl, sym, cong, funExt, transp, hcomp; path-word lowering refusal |
-| S4 | sealed-lang | cdfc751, 3460a4a, 3187312, fc7fb7f, 0c72c03, b4a5dce | HIT decls, path constructors, folds with path cases, formal hcomp, Trunc1, Trunc0, Quot, isProp, isSet |
+| S2 (was S3) | sealed-lang | 872b0b4, 9394ffd, 705ab9f | I, PathP, Path, refl, sym, cong, funExt, transp, hcomp; path-word lowering refusal. Ported in S2. |
+| S2 (was S4) | sealed-lang | cdfc751, 3460a4a, 3187312, fc7fb7f, 0c72c03, b4a5dce | HIT decls, path constructors, folds with path cases, formal hcomp, Trunc1, Trunc0, Quot, isProp, isSet. Ported in S2. |
 | S5 | coin-lang | 44c917f, 91d7091, 34acff5 | Fin, equivalences, Glue, ua, uaBeta, hcomp at Glue and U, uaArrow (the hunks that sealed-lang R36 dropped) |
 | S6 | new | (design reference: zkpolicy-lang a1780a9, f176ac6) | indexed families with path constructors (HIIT), inductive-inductive blocks with path constructors (QIIT) |
 
@@ -178,6 +179,60 @@ types, no SProp, no irrelevant arguments, no definitional proof
 irrelevance, no K, no UIP (O17). isProp and isSet are ordinary guest types.
 Each slice adds a refusal row for each Prop-like form it could admit.
 
+S2 result: the ported kernel refuses each form. `Prop` and `SProp` are not
+types (NAME_UNKNOWN). They are reserved names (rule R4,
+src/front/check.c:171), so no declaration can take them. The lexer and the
+parser have no irrelevance marker. Two different elements of Trunc1 or
+Trunc0 are not convertible, also with an isProp hypothesis (PATH_END). A
+path between two paths needs a squash path, never refl (PATH_UIP, rule R9).
+
+### Kernel rules carried from sealed-lang
+
+The R-numbers in code comments come from three sources. The numbers
+overlap, so the form of the cite tells the source.
+
+- "rule Rn" with n from 1 to 5: the kit rules in formers/FORMERS.md:45-57.
+  R1 no new data type (REFUSE_DATA). R2 no unproved fact (REFUSE_AXIOM).
+  R3 no general recursion (REFUSE_REC). R4 no new core name (REFUSE_NAME).
+  R5 host forms (not cited in code).
+- "Rn (a)", "(Sx Rn (a))" and "rule R9" or "rule R12": coin-lang slice
+  rulings. sealed-lang took them with the coin-lang kernel. The numbers
+  restart in each coin-lang slice. The sources are
+  ~/Documents/lang-template-work/coin-lang-S1-kickoff.md,
+  coin-lang-S2-kickoff.md and coin-lang-S4-kickoff.md.
+  - S1: R4 the interval is the free De Morgan algebra in normal form; R5
+    interval substitution in values; R7 JSON rules 5 and 6; R9 the refusal
+    codes PATH_END, PATH_UIP, INTERVAL_TYPE; R11 path eta and the De Morgan
+    laws hold by conversion; R12 the PathP line is a syntactic interval
+    abstraction.
+  - S2: R1 face formulas are interval terms; R2 the hcomp surface; R3 the
+    transp surface; R4 transp is the base on a data type; R6 transport,
+    subst and J are guest definitions in domain.lang; R11 the closure shape
+    of a LAM or PLAM value.
+  - S4: R1 the HIT declaration form, in domain.lang only; R2 a path
+    constructor reduces at its ends; R3 a formal hcomp at a HIT stays a
+    value; R4 fold has one path case per path constructor; R5 Trunc1 and
+    Trunc0 with squash cases; R6 the set quotient Quot A R; R7 transp at a
+    family with parameters; R8 the Trunc0 fold needs the isSet RES case.
+- Other Rn: sealed-lang rulings (sealed-lang docs/PLAN.md). R3 the kit Eq
+  is removed and Path replaces it (PLAN:266). R14 natDiv and natMod, a zero
+  divisor traps (PLAN:128). R16 hash is 2-ary over U256 (PLAN:315). R17 an
+  ecAdd or ecMul result is a heap block, a stuck curve value lowers to
+  PRECOMPILE, ecPairing takes a closed list (PLAN:317). R18 a STATICCALL
+  that returns 0 reverts, an empty ecrecover return is address 0
+  (PLAN:320). R19 natMul, u256Mul, u256Div, u256Min are pruned (PLAN:322).
+  R20 addrToU256 is the one conversion from Addr (PLAN:324). R21 the sample
+  domain is removed (PLAN:326). R23 ENTRY_PARAMS_MAX is 32 (PLAN:330). R27
+  Nat, Flag, U256, Addr, Unit and Map are base lines in the Kan rules
+  (PLAN:344). R31 a point constructor lowers like a family value, a path
+  residual gives REFUSE_LOWER (PLAN:364). R33 no new base line, fold_path
+  and fold_hcomp (PLAN:374). R36 the Glue hunks and Fin are dropped
+  (PLAN:387).
+- "R0" at src/front/check.c:948 is not a rule. It names the interval end
+  value r0.
+
+Do not renumber these cites. New orbit-lang rulings use O-numbers.
+
 ## 6. The zero-knowledge ballot layer
 
 Default scheme (O10): a linkable ring signature over BN254 G1 (bLSAG form),
@@ -186,6 +241,9 @@ with the Fiat-Shamir challenge from keccak256. Reasons:
 - The TinyCC host can run the prover, so proveZK is an operation the host
   can evaluate. A Groth16 prover in C is too large for one slice.
 - The EVM verifier needs only ecAdd (0x06), ecMul (0x07) and modexp (0x05).
+  The S2 port gives the runner 0x01, 0x06, 0x07 and 0x08 (sealed-lang
+  bc8e168), not 0x05. 0x05 is an S8 item: S8 adds it to the runner and to
+  test/precompile.sh if the bLSAG hash-to-curve needs it.
   These precompiles exist on Ethereum mainnet. Telcoin Network needs a probe
   (O16).
 - There is no trusted setup and no circuit compiler.
@@ -250,15 +308,24 @@ for each build), the counts in docs/STATUS.md, and a USER commit.
 |---|---|---|
 | S0 | seed: design, plan, kit scaffold | kit gate GREEN |
 | S1 | rulings on O1 to O20: DONE 2026-10-16, all defaults, proof irrelevance prohibited | none |
-| S2 | base span: kit items made internal, sample domain removed, the 11 types and 9 operations declared; EVM runner support for 0x05, 0x06, 0x07 (from sealed-lang bc8e168, runner side only) | refusals for a kit name in guest code and for Prop, SProp and irrelevance markers; precompile vectors (EIP-196) |
-| S3 | paths and Kan operations (sealed-lang cherry-picks) | wrong end point, I as a type, irrelevance-only conversion |
-| S4 | HITs, QITs, truncations; Orbit as a quotient | missing path case, wrong boundary, quotient fold without isSet, path at run time |
+| S2 | DONE 2026-10-16: port of the sealed-lang S2 to S4 kernel (paths, Kan operations, HITs, QITs, truncations), sample domain removed, EVM runner precompiles 0x01, 0x06, 0x07, 0x08 (sealed-lang bc8e168) | Prop and SProp as a type and as a name; 4 irrelevance marker spellings; refl between different Trunc1, Trunc0 and isProp elements; a path of paths between different loops; precompile vectors (EIP-196, EIP-197) |
+| S3 | base-span pruning: the kit items and the sealed-lang base ops natDiv, natMod, hash, ecrecover, ecAdd, ecMul, ecPairing, addrToU256 made internal (section 4); the 11 types and 9 operations declared | refusals for a kit name and for a sealed-lang base op in guest code |
+| S4 | Orbit as a quotient of the voter orbits (the HIT, QIT and truncation formers came with the S2 port) | Orbit fold without isSet, wrong Orbit boundary, Orbit path at run time |
 | S5 | Glue, ua, uaBeta, hcomp at U (coin-lang merge) | Glue boundary mismatch, ua on a non-equivalence |
 | S6 | HIITs and QIITs | wrong index in a path constructor, inductive-inductive order, missing coherence case |
 | S7 | DAO prelude and laws 1 to 4 as guest theorems; menu of constitutions | a non-invariant constitution is refused; a wrong gov unit is refused |
 | S8 | ZK layer: BN254 G1 in C, castPrivate, proveZK, project, verifyZK lowering, nullifier map | known-answer vectors; mutants: wrong ring member, reused key image, flipped choice, wrong poll id, point not on the curve |
 | S9 | contract end to end: deploy, cast, outcome, amend; host and EVM differential; gas table per ring size; chain probe | differential rows, revert rows, size limits EIP-170 and EIP-3860 |
 | S10 | law 6 (regimes), docs, final gate | regime rows |
+
+Builder call (S2, 2026-10-16): port route Q. A probe in scratch clones
+compared two port orders on 6cd1104. Route P (sealed-lang 872b0b4,
+9394ffd, cdfc751, 3460a4a, 3187312, fc7fb7f, 0c72c03 straight) gave 10
+conflict hunks in 8 files. Route Q (sealed-lang bc8e168 first, then the
+same list) gave 0 conflict hunks. 705ab9f and b4a5dce conflict only in
+docs, so S2 applies their code paths and kit docs by hand. The rule is
+"port first, prune second": S2 ports the sealed-lang S2 to S4 kernel, S3
+prunes the base span, S4 makes Orbit a quotient. No slice is dropped.
 
 ## 9. Open items
 

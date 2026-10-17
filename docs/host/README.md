@@ -1,6 +1,6 @@
 # tcc-evm-contract
 
-The TinyCC host kit of retainer-lang. It compiles the contract language to EVM bytecode.
+The TinyCC host kit. lang-template made it for retainer-lang, and orbit-lang uses it. It compiles the contract language to EVM bytecode.
 
 ## Origin
 
@@ -24,7 +24,10 @@ The TinyCC host kit of retainer-lang. It compiles the contract language to EVM b
 | K4b | Entries, dispatch and call data decode | Done |
 | K4c | EVM views, logs, ABI and List writes | Done |
 | K4d | Token calls (pay and pull) and the differential test | Done |
-| After K4d | None: retainer-lang closes at K4d | Closed |
+| After K4d | None: the kit slices end at K4d; the orbit-lang slices follow | Closed |
+| S2 | sealed-lang S2 port: base span: `natDiv`, `natMod`, `hash`, `addrToU256`, `ecrecover`, `ecAdd`, `ecMul`, `ecPairing`; four kit operations pruned | Done |
+| S2 | sealed-lang S3 port: interval paths: `I`, `PathP`, `Path`, `refl`, `sym`, `cong`, `funExt`, `transp`, `hcomp`; the kit `Eq` removed | Done |
+| S2 | sealed-lang S4 port: HITs and QITs: path constructors in `family`, `fold` with path cases, S1, Trunc1, Trunc0 and Quot in `domain/domain.lang`; erased at a word position | Done |
 
 
 ## U256 and Addr (slice K2)
@@ -48,11 +51,8 @@ Prelude names:
 |------|------|--------|
 | `u256Add` | `U256 -> U256 -> U256` | The sum. An overflow past 2^256 - 1 traps. |
 | `u256Sub` | `U256 -> U256 -> U256` | The difference. The result stops at 0. |
-| `u256Mul` | `U256 -> U256 -> U256` | The product. An overflow traps. |
-| `u256Div` | `U256 -> U256 -> U256` | The quotient, rounded down. Division by 0 traps. |
 | `u256Le` | `U256 -> U256 -> Flag` | `flagYes` when the first is less than or equal to the second. |
 | `u256Eq` | `U256 -> U256 -> Flag` | `flagYes` when the two are equal. |
-| `u256Min` | `U256 -> U256 -> U256` | The smaller of the two. |
 | `toU256` | `Nat -> U256` | The same number as a U256. This is the only conversion. |
 | `addrEq` | `Addr -> Addr -> Flag` | `flagYes` when the two addresses are equal. |
 
@@ -162,7 +162,7 @@ The exit codes of `langc run`:
 
 ## Maps (slice K4a0)
 
-`Map K V` is a finite map. K4a0 adds it to the front end only (`langc check`, `langc eval` and `langc run`). There is no EVM code for a Map yet.
+`Map K V` is a finite map. K4a0 adds it to the front end (`langc check`, `langc eval` and `langc run`). K4a lowers Map state fields to EVM storage; see `EVM output` below.
 
 - The key type K must be Nat, U256 or Addr. The value type V must be Nat, Flag, U256 or Addr. Other types give REFUSE_MAP.
 - `mapEmpty` is the empty map. `mapGet m k` gives the value at the key k. `mapSet m k v` gives the map with the value v at the key k.
@@ -277,9 +277,38 @@ The other refusals of `langc build` (exit 1, no output):
 
 `build/buildtool` checks the 37-byte runtime of a contract with no entry, the EIP-170 runtime limit in the two output modes, the EVM_SELECTOR refusal (before any output) and IO_WRITE with exit 2 for a closed stdout pipe.
 
+## The base span (sealed-lang S2, ported in orbit-lang S2)
+
+Slice S2 of sealed-lang adds eight operations and removes four. `langc eval` keeps the four curve operations stuck (opaque). `test/precompile.sh` checks them on the chain with `evm` (18 steps).
+
+| Name | Type | Result |
+|------|------|--------|
+| `natDiv` | `Nat -> Nat -> Nat` | The floor of the quotient. A divisor 0 traps. |
+| `natMod` | `Nat -> Nat -> Nat` | The remainder. A divisor 0 traps. |
+| `hash` | `U256 -> U256 -> U256` | KECCAK256 of the two words, packed as 64 bytes. `langc eval` computes it with `src/keccak.c`. |
+| `addrToU256` | `Addr -> U256` | The address as a word (the low 160 bits). The one conversion from `Addr`. |
+| `ecrecover` | `U256 -> Nat -> U256 -> U256 -> Addr` | The signer of the hash from `v`, `r` and `s` (precompile 1). An invalid signature gives the address 0. Stuck in `langc eval`. |
+| `ecAdd` | `Prod U256 U256 -> Prod U256 U256 -> Prod U256 U256` | The sum of two BN254 G1 points (precompile 6). A point that is not on the curve reverts. Stuck in `langc eval`. |
+| `ecMul` | `Prod U256 U256 -> U256 -> Prod U256 U256` | The scalar product of a G1 point (precompile 7). Stuck in `langc eval`. |
+| `ecPairing` | `List (Prod G1 G2) -> Flag` | `flagYes` when the pairing product is one (precompile 8). G1 is `Prod U256 U256`. G2 is `Prod (Prod U256 U256) (Prod U256 U256)` in the EIP-197 word order (x_im, x_re, y_im, y_re). The list must be a closed `cons` chain at build; an open list gives REFUSE_LOWER. Stuck in `langc eval`. |
+
+EVM form: a residual curve application lowers to an IR_STMT_PRECOMPILE statement that executes one STATICCALL to its precompile (`lower_curve` in `src/lower.c`, IR_STMT_PRECOMPILE in `src/evm.c`). The input words use the data region after the output blocks. The output words go in a block that is stored 0 before each call. A STATICCALL that returns 0 reverts with empty data. `first` and `second` of a curve value read the two output words. Repeated uses of the same residual value in one block, or in nested blocks after its statement, reuse the output. Uses in separate `if` arms emit separate statements; a statement in a fold body executes once per element. Removed in sealed-lang S2 (R19): `natMul`, `u256Mul`, `u256Div` and `u256Min`; a program that names one gets NAME_UNKNOWN.
+
+## Paths (sealed-lang S3, ported in orbit-lang S2)
+
+Slice S3 of sealed-lang replaces the kit `Eq` with the interval paths of coin-lang: `I`, `i0`, `i1`, `PathP`, `Path`, `refl`, `sym`, `cong`, `funExt`, `transp` and `hcomp` (BUILTINS 61 - 6 + 11 = 66 rows). `transport`, `subst`, `J`, `JRefl` and `trans` are guest defs in `domain/domain.lang`. `formers/tcc-evm-contract.md` section `Paths (sealed-lang S3, ported in orbit-lang S2)` gives each operation and its tests.
+
+Path computations normalize before lowering. A proof used only during checking has no runtime content. A remaining path or Kan operation at a word position gives REFUSE_LOWER (`test/lower/path-word.lang`); the EVM never tests two words for equality to check a path (R24). The existing EVM regressions still pass with the sealed-lang S2 counts: `test/evm.sh` 43 steps, `test/diff.sh` 15 rows and `build/emittool` 24 execution regressions. Path-specific coverage includes the refusal fixture and the 19 quote and parse roundtrips in `build/pathtool`.
+
+## HITs and QITs (sealed-lang S4, ported in orbit-lang S2)
+
+Slice S4 of sealed-lang adds the higher inductive types of coin-lang (8c79e9a, e0d4f3c and 25c14e0, without Glue): a `family` constructor can have interval fields and a boundary system, and `fold` takes one case for each path constructor. `domain/domain.lang` declares S1, Trunc1, Trunc0 and Quot, with the guest defs isProp and isSet. BUILTINS stays 66 rows. `formers/tcc-evm-contract.md` section `HITs and QITs (sealed-lang S4, ported in orbit-lang S2)` gives each form and its tests.
+
+Erasure: a point constructor value lowers as a family value lowers. A path constructor residual or a formal hcomp is not a word: at a word position it gives REFUSE_LOWER (`value_name` in `src/lower.c`, R31; the fixture `test/lower/loop-word.lang` is refused at the stuck `hcomp U256`, R33). A path at run time is that refusal (R37): `langc run` has no new row. The EVM counts did not change at any sealed-lang S4 step: `test/evm.sh` 43 steps, `test/diff.sh` 15 rows, `build/emittool` 24 execution regressions, `test/run.sh` 5 runs and 10 run refusals. HIT-specific coverage is in the check and eval fixtures, the lower refusal and the 26 quote and parse roundtrips in `build/pathtool` (19 -> 26).
+
 ## Commands
 
-- `make check`: the tcc build with `-Wall -Werror`, the clang syntax pass, `test/gate.sh`, `test/run.sh`, `test/asm.sh`, `test/build.sh`, `test/dispatch.sh`, `test/evm.sh`, `test/mock.sh` and `test/diff.sh`. `test/asm.sh`, `test/build.sh`, `test/dispatch.sh`, `test/evm.sh`, `test/mock.sh` and `test/diff.sh` need geth `evm` on PATH.
+- `make check`: the tcc build with `-Wall -Werror`, the clang syntax pass, `test/gate.sh`, `test/run.sh`, `test/asm.sh`, `test/build.sh`, `test/dispatch.sh`, `test/evm.sh`, `test/precompile.sh`, `test/mock.sh` and `test/diff.sh`. `test/asm.sh`, `test/build.sh`, `test/dispatch.sh`, `test/evm.sh`, `test/precompile.sh`, `test/mock.sh` and `test/diff.sh` need geth `evm` on PATH.
 - `build/langc check FILE` and `build/langc eval FILE`: as in tcc-wasm.
 - `build/langc run PROG SCRIPT`: does the calls in `SCRIPT` on the program `PROG`. Refer to `## Contracts (slice K3)`. `test/run.sh` runs each `test/run/NAME.script` on `examples/contract.lang` and compares the output with `test/run/NAME.out`. It also has 8 refusal rows and a usage row. `build/runtool` checks fresh fuel for initialization and call classification.
 - `build/langc build FILE [-o OUT] [--runtime]` writes the creation code (with `--runtime`, the runtime code: the dispatcher and the entry blocks) as one line of lowercase hex. Refer to `## EVM output (slice K4)`.

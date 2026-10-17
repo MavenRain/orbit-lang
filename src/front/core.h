@@ -27,7 +27,6 @@ typedef enum {
   OP_SUM,
   OP_OPTION,
   OP_LIST,
-  OP_EQ,
   OP_FAMILY,
   OP_UNIT_VAL,
   OP_FLAG_YES,
@@ -40,7 +39,6 @@ typedef enum {
   OP_NIL,
   OP_CONS,
   OP_PACK,
-  OP_REFL,
   OP_CTOR,
   OP_FIRST,
   OP_SECOND,
@@ -56,32 +54,39 @@ typedef enum {
   OP_FILTER,
   OP_WITNESS,
   OP_PAYLOAD,
-  OP_SYMM,
-  OP_TRANS,
-  OP_TRANSPORT,
-  OP_CONG,
   OP_NAT_ADD,
   OP_NAT_SUB,
-  OP_NAT_MUL,
   OP_NAT_EQ,
   OP_NAT_LE,
   OP_FLAG_IF,
   OP_U256_ADD,
   OP_U256_SUB,
-  OP_U256_MUL,
-  OP_U256_DIV,
   OP_U256_LE,
   OP_U256_EQ,
-  OP_U256_MIN,
   OP_TO_U256,
   OP_ADDR_EQ,
+  /* sealed-lang S2 (R14, R16 to R18, R20): the base span. The curve ops
+     ECRECOVER, EC_ADD, EC_MUL and EC_PAIRING are opaque in the evaluator
+     and exact on the EVM (precompiles 1, 6, 7, 8). */
+  OP_NAT_DIV,
+  OP_NAT_MOD,
+  OP_HASH,
+  OP_ECRECOVER,
+  OP_EC_ADD,
+  OP_EC_MUL,
+  OP_EC_PAIRING,
+  OP_ADDR_TO_U256,
   OP_PROJ,
   /* Slice K4a0: Map K V, the map value (k0 v0 k1 v1 ... with the keys in
      order and no zero value), mapGet V m k and mapSet V m k v. */
   OP_KMAP,
   OP_KMAP_OF,
   OP_KMAP_GET,
-  OP_KMAP_SET
+  OP_KMAP_SET,
+  OP_INTERVAL, /* the sort I: never a type, only the type of an interval term */
+  OP_TRANSP,   /* transp L phi a: L a line (a path value in U), phi a face */
+  OP_SYSTEM,   /* a system: key0, branch0, key1, branch1, ...; each branch a PLAM */
+  OP_HCOMP     /* hcomp A phi sys u0: phi a face, sys an OP_SYSTEM value */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -102,7 +107,15 @@ typedef enum {
   CORE_PI,     /* (name : a) -> b */
   CORE_SIGMA,  /* Sigma (name : a) b */
   CORE_APP,    /* a b */
-  CORE_OP      /* a core name with all of its arguments */
+  CORE_OP,     /* a core name with all of its arguments */
+  CORE_PLAM,   /* fun name => b, name an interval variable */
+  CORE_PAPP,   /* a @ b; args[0], args[1]: the two ends of the path a */
+  CORE_PATHP,  /* PathP (fun name => b) args[0] args[1] */
+  CORE_IZERO,  /* i0 */
+  CORE_IONE,   /* i1 */
+  CORE_INEG,   /* ~a */
+  CORE_IMEET,  /* a /\ b */
+  CORE_IJOIN   /* a \/ b */
 } CoreKind;
 
 typedef struct Core Core;
@@ -134,8 +147,55 @@ typedef enum {
   VAL_OP,   /* a canonical value or a type */
   VAL_VAR,  /* neutral: a variable at a de Bruijn level */
   VAL_APP,  /* neutral: a neutral function applied to a value */
-  VAL_STUCK /* neutral: an operation with a neutral scrutinee */
+  VAL_STUCK, /* neutral: an operation with a neutral scrutinee */
+  VAL_PLAM,  /* a path abstraction (a closure on an interval variable) */
+  VAL_PATHP, /* a path type: the line is the closure, args[0..1] the ends */
+  VAL_IVAL,  /* an interval term in normal form */
+  VAL_PAPP   /* neutral: a neutral path at an interval value */
 } ValKind;
+
+/* An interval literal is level * 2 + 1 for a negated variable, else
+   level * 2. A conjunction is a sorted array of distinct literals. */
+typedef struct {
+  const uint32_t *lits;
+  uint32_t count;
+} IConj;
+
+/* The closure of a LAM or PLAM value (R11 (a)). CLOS_CORE is the S1 shape
+   (env + body). Each other tag is a closure of a Kan rule: ARGS holds its
+   values, L is the line and phi the face. */
+typedef enum {
+  CLOS_CORE,
+  CLOS_LINE_PART, /* PLAM: r |-> the type argument FIELD of L(r); args: L */
+  CLOS_PI_DOM,    /* PLAM: j |-> the domain of L(r \/ ~j); args: L, r */
+  CLOS_PI_COD,    /* PLAM: i |-> B(i) (x'(i)); args: L, phi, x */
+  CLOS_TRANSP_PI, /* LAM: x |-> transp B' phi (f (x'(i0))); args: L, phi, f */
+  CLOS_SIGMA_DOM, /* PLAM: j |-> the domain of L(r /\ j); args: L, r */
+  CLOS_SIGMA_COD, /* PLAM: i |-> B(i) (a'(i)); args: L, phi, u */
+  /* S2b. A SYS tag is the map of one branch b of a system. */
+  CLOS_CONST,          /* PLAM: _ |-> v; args: v */
+  CLOS_SYS_APP,        /* PLAM: i |-> b i x; args: b, x */
+  CLOS_SYS_PAPP,       /* PLAM: i |-> b i @ j; args: b, j, a, b1 (the ends) */
+  CLOS_SYS_SIGMA,      /* PLAM: i |-> the part FIELD of b i; args: b */
+  CLOS_SYS_ARG,        /* PLAM: i |-> the argument FIELD of b i; args: b */
+  CLOS_SYS_MEET,       /* PLAM: j |-> b (i /\ j); args: b, i */
+  CLOS_COMP_BRANCH,    /* PLAM: i |-> transp (fun j => L (i \/ j)) i (b i); args: b, L */
+  CLOS_LINE_JOIN,      /* PLAM: j |-> L (i \/ j); args: L, i */
+  CLOS_HCOMP_PI,       /* LAM: x |-> hcomp (B x) phi (sys x) (u0 x); args: A, phi, sys, u0 */
+  CLOS_HCOMP_PATHP,    /* PLAM: j |-> hcomp (A j) ...; args: A, phi, sys, u0 */
+  CLOS_SIGMA_FILL_COD, /* PLAM: i |-> B (hfill A phi sys u i); args: A, phi, sys, u */
+  CLOS_TRANSP_PATHP,   /* PLAM: r |-> comp of p0 @ r (rule 7); args: L, phi, p0 */
+  CLOS_PATHP_LINE,     /* PLAM: i |-> L(i) at r; args: L, r */
+  CLOS_PATHP_END,      /* PLAM: i |-> the end FIELD of L(i); args: L */
+  CLOS_SYS_FOLD,       /* PLAM: j |-> fold (b j) with the cases and RES of F; args: b, F (a stuck fold); field: the family */
+  /* transp at a family with parameters (S4 item 11). */
+  CLOS_FAMILY_FIELD,   /* PLAM: r |-> the type of the point field FIELD of the constructor of v at the parameters of L(r) and the fills at r of the earlier fields (item 13); args: L, v, phi */
+  CLOS_SYS_TRANSP,     /* PLAM: j |-> transp L phi (b j); args: b, L, phi */
+  CLOS_LINE_MEET,      /* PLAM: j |-> L (i /\ j); args: L, i */
+  /* S4 item 14. */
+  CLOS_FOLD_PATH,      /* PLAM: k |-> fold (p @ k) with the cases and RES of F; args: p, a, b (the ends of p), F (a stuck fold); field: the family */
+  CLOS_FOLD_FACE       /* PLAM: k |-> fold (X at the first interval E, the second k) with the cases and RES of F; args: X, E, F (a stuck fold); field: the family */
+} ClosTag;
 
 typedef struct Value Value;
 typedef struct Env Env;
@@ -156,25 +216,46 @@ struct Value {
   const Value *const *args;
   uint32_t argc;
   const char *name; /* LAM, PI, SIGMA: the binder */
-  const Value *dom; /* PI, SIGMA: the domain. APP: the function. */
-  const Value *arg; /* APP: the argument. A PI with no body: the codomain. */
-  const Env *env;   /* LAM, PI, SIGMA: the closure */
+  const Value *dom; /* PI, SIGMA: the domain. APP, PAPP: the function. */
+  const Value *arg; /* APP, PAPP: the argument. A PI with no body: the codomain. */
+  const Env *env;   /* LAM, PI, SIGMA, PLAM, PATHP: the closure */
   const Core *body;
+  ClosTag tag;      /* LAM, PLAM: CLOS_CORE, or a Kan rule closure */
+  /* IVAL: the join of CONJ_COUNT conjunctions, in a canonical order, with
+     no conjunction that contains another. i0 has no conjunction; i1 has
+     one empty conjunction. */
+  const IConj *conj;
+  uint32_t conj_count;
 };
 
 typedef struct {
   const char *name;
-  const Core *type; /* in the context of the family parameters */
-  int recursive;    /* the field type is the family itself */
-  int history;      /* a history field of the state (slice K3a) */
+  /* In the context of the family parameters and the earlier point fields
+     (S4 item 13): index 0 is the field before this one. */
+  const Core *type;
+  int recursive;      /* the field type is the family itself */
+  int dependent;      /* the field type uses an earlier point field */
+  int over_recursive; /* the field type uses an earlier recursive field */
+  /* A path field `Path F x y` (S4 item 14): x and y are the earlier
+     recursive fields ENDS[0] and ENDS[1]. The fold gives it the type
+     `Path RES x' y'`. */
+  int path;
+  uint32_t ends[2];
+  int history;        /* a history field of the state (slice K3a) */
 } FieldInfo;
 
 typedef struct {
   const char *name;
   uint32_t family;
   const FieldInfo *fields;
-  uint32_t field_count;
+  uint32_t field_count; /* the point fields only */
   int event; /* an event of the program, a constructor of Out (slice K4a1) */
+  /* A path constructor (S4 R1 (a)): 1 or 2 interval fields after the
+     point fields, and the boundary, an OP_SYSTEM core over the
+     parameters, the point fields and the interval fields. A point
+     constructor has 0 and NULL. */
+  uint32_t interval_count;
+  const Core *boundary;
 } CtorInfo;
 
 /* A domain family. Its constructors are ctors[first_ctor ...]. A family
@@ -216,6 +297,7 @@ typedef struct {
   int overflowed;
   int has_state;          /* the program declares the state (slice K3a) */
   uint32_t state_family; /* the state family, when has_state is 1 */
+  uint32_t fresh; /* the count of fresh levels for the Kan head test */
 } Machine;
 
 /* Each function returns NULL (or 0) after a diagnostic. A NULL input gives a
@@ -223,9 +305,34 @@ typedef struct {
 const Value *val_nat(Machine *m, uint64_t n);
 const Value *val_word(Machine *m, uint64_t sort, const U256 *word);
 const Value *val_var(Machine *m, uint32_t level);
+/* The interval variable at LEVEL. */
+const Value *val_ivar(Machine *m, uint32_t level);
+/* i0 when SIDE is 0, else i1. */
+const Value *val_iend(Machine *m, int side);
+/* 1 when V is the interval value i0 (SIDE 0) or i1 (SIDE 1). */
+int ival_is_end(const Value *v, int side);
+/* The face normal form of PHI (R1 (a)): each conjunction that holds a
+   literal and its negation goes, as the face of such a conjunction is
+   empty. Face equality is then interval value equality. */
+const Value *face_norm(Machine *m, const Value *phi);
+/* The face normal form of A \/ B and of A /\ B. */
+const Value *face_join(Machine *m, const Value *a, const Value *b);
+const Value *face_meet(Machine *m, const Value *a, const Value *b);
+/* The face map: R with the interval variable at LEVEL set to the end SIDE. */
+const Value *ival_face(Machine *m, const Value *r, uint32_t level, int side);
+/* The face map of the conjunction C on each interval value of ENV. The
+   checker context binds only variables, so this is the act of C on the
+   context (S1 R5 (a)). Returns 0 after a diagnostic. */
+int env_face(Machine *m, const Env *env, const IConj *c, const Env **out);
+/* P @ R. A and B are the ends of P (NULL only in a value that conversion
+   alone reads). A neutral P at i0 gives A, at i1 gives B. */
+const Value *path_apply(Machine *m, const Value *p, const Value *r, const Value *a, const Value *b);
 const Value *val_univ(Machine *m, uint64_t level);
 const Value *val_op(Machine *m, ValKind kind, Op op, uint32_t inst, uint32_t field, const Value *const *args, uint32_t argc);
 const Value *val_make(Machine *m, Op op, uint32_t inst, uint32_t argc, const Value *a, const Value *b, const Value *c);
+/* The constructor INST at the arguments A (S4 R2 (a)): a path constructor
+   at a true face of its boundary is the branch. */
+const Value *val_ctor(Machine *m, uint32_t inst, const Value *const *a, uint32_t n);
 /* A non-dependent function type. */
 const Value *val_arrow(Machine *m, const Value *dom, const Value *cod);
 const Value *val_closure(Machine *m, ValKind kind, const char *name, const Value *dom, const Env *env, const Core *body);
@@ -234,7 +341,7 @@ const Env *env_push(Machine *m, const Env *env, const Value *value);
 const Value *def_value(Machine *m, uint32_t index);
 const Value *eval_core(Machine *m, const Env *env, const Core *core);
 const Value *apply_value(Machine *m, const Value *fn, const Value *arg);
-/* The body of a LAM, PI or SIGMA value at ARG. */
+/* The body of a LAM, PI, SIGMA, PLAM or PATHP value at ARG. */
 const Value *closure_apply(Machine *m, const Value *binder, const Value *arg);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */
 int conv_values(Machine *m, uint32_t level, const Value *a, const Value *b);
