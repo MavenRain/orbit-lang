@@ -1,13 +1,13 @@
 # Validation
 
 Date: 2026-10-17. tcc: 0.9.28rc. evm (go-ethereum): 1.14.12. Host
-executable: `build/langc` at 7734007 plus the S3 changes.
+executable: `build/langc` at 3a1ba76 plus the S4 changes.
 
 `make -B check` passes: it builds `langc` and the test tools with tcc,
 runs the clang `-Wall -Wextra -Wswitch-enum -Werror` check, and runs the
-gate scripts. It runs 25 examples, 19 parse refusals, 119 check
-refusals, 22 kit-only refusals, 62 evals, 5 runs, 10 run refusals, 8
-asmtool checks, 3 builds, 14 lower refusals, 31 build checks, 20
+gate scripts. It runs 26 examples, 19 parse refusals, 132 check
+refusals, 22 kit-only refusals, 65 evals, 5 runs, 10 run refusals, 8
+asmtool checks, 3 builds, 15 lower refusals, 32 build checks, 20
 dispatch checks, 43 evm steps, 18 precompile steps, 13 mock rows, 15
 diff rows, 24 emit regressions and the review, domain, path, fuel,
 output, lower and hashing regressions, with zero failures.
@@ -49,3 +49,17 @@ check refusals, the guest example `signature` and its eval, and the
 kit-only assertion: each REFUSE_KIT row gives `ok` under `--kit`.
 Mutants K1 to K7, K2b and K4b are killed (9 of 9, 50 admissions,
 docs/STATUS.md "## S3").
+
+The S4 review adds Orbit and the dependent eliminator (PLAN section 8,
+USER ruling 2026-10-17). The kernel declares Orbit and orbitProj
+directly after `act`, and `elim P c1 .. cn x` eliminates Sum A B and
+Unit into a motive. The review adds the guest example `orbit` (isSet
+Choice by elim, the fold of Orbit into Choice) and its 3 evals, 13 check
+refusals and the lower refusal `orbit-word`. Refusals cover a program
+Orbit or orbitProj, Orbit with no act, an Orbit fold with no isSet case,
+a false isSet case, a quotEq path with a wrong witness, elim with a
+wrong case type, case count, scrutinee or motive domain, a motive into
+Prop, elim on a Path (no K), Unit eta, and an Orbit value at a word
+position. Mutants G0, G1, O1, E1, E1b, E2, E3, E4, F1, P1, P1b and N1b
+are killed (12 of 14, 13 admissions). N1 meets a second refusal class,
+and L1 is an equivalent mutant for its row (docs/STATUS.md "## S4").

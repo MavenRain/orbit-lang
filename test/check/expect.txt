@@ -117,3 +117,16 @@ sig-primitive-op.lang REFUSE_SIG
 sig-slot-universe.lang REFUSE_SIG
 sig-act-type.lang REFUSE_SIG
 sig-act-early.lang REFUSE_SIG
+elim-case-type.lang TYPE_MISMATCH
+elim-case-count.lang TYPE_MISMATCH
+elim-scrutinee.lang TYPE_MISMATCH
+elim-motive-prop.lang NAME_UNKNOWN
+elim-path-k.lang TYPE_MISMATCH
+elim-motive-dom.lang TYPE_MISMATCH
+unit-no-eta.lang PATH_END
+orbit-fold-no-set.lang TYPE_MISMATCH
+orbit-fake-set.lang PATH_END
+orbit-boundary.lang PATH_END
+orbit-guest-def.lang REFUSE_SIG
+orbitproj-guest-def.lang REFUSE_SIG
+orbit-no-act.lang NAME_UNKNOWN

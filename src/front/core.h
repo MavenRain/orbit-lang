@@ -44,6 +44,7 @@ typedef enum {
   OP_SECOND,
   OP_EITHER,
   OP_OPTION_ELIM,
+  OP_ELIM,
   OP_PURE,
   OP_MAP,
   OP_BIND,

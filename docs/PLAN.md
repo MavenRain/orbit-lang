@@ -315,7 +315,7 @@ for each build), the counts in docs/STATUS.md, and a USER commit.
 | S1 | rulings on O1 to O20: DONE 2026-10-16, all defaults, proof irrelevance prohibited | none |
 | S2 | DONE 2026-10-16: port of the sealed-lang S2 to S4 kernel (paths, Kan operations, HITs, QITs, truncations), sample domain removed, EVM runner precompiles 0x01, 0x06, 0x07, 0x08 (sealed-lang bc8e168) | Prop and SProp as a type and as a name; 4 irrelevance marker spellings; refl between different Trunc1, Trunc0 and isProp elements; a path of paths between different loops; precompile vectors (EIP-196, EIP-197) |
 | S3 | DONE 2026-10-17: base-span pruning: the kit items and the sealed-lang base ops natDiv, natMod, hash, ecrecover, ecAdd, ecMul, ecPairing, addrToU256 made internal (section 4); the 11 types and 9 operations declared | refusals for a kit name and for a sealed-lang base op in guest code (22 REFUSE_KIT rows, each `ok` under `langc --kit`); 6 REFUSE_SIG rows for the design signature |
-| S4 | Orbit as a quotient of the voter orbits (the HIT, QIT and truncation formers came with the S2 port) | Orbit fold without isSet, wrong Orbit boundary, Orbit path at run time |
+| S4 | DONE 2026-10-17: Orbit as a quotient of the voter orbits (the HIT, QIT and truncation formers came with the S2 port), as a kernel declaration after `act`; the dependent eliminator `elim` on Sum and Unit (USER ruling 2026-10-17) | Orbit fold without isSet, wrong Orbit boundary, Orbit path at run time (REFUSE_LOWER); elim case type, case count and scrutinee kind; Prop-like: a motive into Prop, elim on a path (no K), no Unit eta |
 | S5 | Glue, ua, uaBeta, hcomp at U (coin-lang merge) | Glue boundary mismatch, ua on a non-equivalence |
 | S6 | HIITs and QIITs | wrong index in a path constructor, inductive-inductive order, missing coherence case |
 | S7 | DAO prelude and laws 1 to 4 as guest theorems; menu of constitutions | a non-invariant constitution is refused; a wrong gov unit is refused |
@@ -369,6 +369,51 @@ Constitution, Aggregation, Tally, orbitProj, aggregate, gov, amend): the
 names are reserved (REFUSE_SIG). S4 gives Orbit, and the S7 prelude
 gives the rest. S3 adds no binder, no universe and no declaration form,
 so no new Prop-like form opens.
+
+Builder call (S4, 2026-10-17): Orbit is the set quotient of the voter
+assignments by act, as a kernel declaration. When the program defines
+the slot `act` at its slot type, the front end puts two trusted
+definitions (ORIGIN_DOMAIN) directly after it:
+
+```text
+def Orbit : Type 0 := Quot (Member -> Choice) R
+def orbitProj : (Member -> Choice) -> Orbit := fun (c : Member -> Choice) => quot (Member -> Choice) R c
+R = fun (c : Member -> Choice) (d : Member -> Choice) => Sigma (g : Group) (Path (Member -> Choice) (act g d) c)
+```
+
+R is written inline, so the kernel adds no new name. The glue path
+`[act g c] ≡ [c]` of section 3 is `quotEq (Member -> Choice) R (act g c)
+c (pack g refl)`. quotSquash makes Orbit a set, so an Orbit fold needs
+the quotSquash case, of type isSet RES (R8 (a)). S4 gives orbitProj with
+Orbit, because orbitProj is the point constructor [c]. Config stays
+reserved, and the guest writes it as `Member -> Choice`. The S7 prelude
+gives Config, Constitution, Aggregation, Tally, aggregate, gov and amend.
+A program without `act` has no Orbit (NAME_UNKNOWN). A guest definition
+of Orbit or orbitProj stays REFUSE_SIG, also after `act`.
+test/check/sig-defined.lang has no `act`, so it stays a guest-only row
+with the code REFUSE_SIG. A guest can give R its own name, and
+conversion unfolds that name.
+
+USER ruling (S4, 2026-10-17): S4 adds a dependent eliminator. A probe on
+3a1ba76 showed that no Orbit value can get to a word position. Each
+Orbit fold needs an isSet proof of its target. The kernel has no
+dependent eliminator and Unit has no eta, so no word carrier and no Sum
+has an isSet proof. The former `elim P c1 ... cn x` takes a motive
+`P : X -> Type k`, one case for each constructor and the scrutinee
+`x : X`, and has the type `P x`. In S4, X is `Sum A B` (cases
+`(a : A) -> P (inl a)` and `(b : B) -> P (inr b)`) or `Unit` (case
+`P unit`). `elim P f g (inl a)` reduces to `f a`, `elim P f g (inr b)`
+to `g b` and `elim P u unit` to `u`. On a different value, elim stays
+neutral (O22). The kernel refuses elim on a type with path constructors
+(O21), on Nat, List or a Path (no K), and elim with a wrong case count
+or a wrong case type. With elim, a guest proves isSet Unit, isSet
+(Sum A B) from isSet A and isSet B, and isSet Choice, and folds Orbit
+into Choice. So the run-time row is a lower row: an Orbit path at a
+word position gives REFUSE_LOWER. elim adds a binder (the motive), so
+S4 adds Prop-like rows: a motive into Prop (NAME_UNKNOWN), elim on a
+path (no K), and two Unit variables that are not convertible (no eta,
+no strict proposition). S4 adds no empty type: `either` into `Type 0`
+gives the disjointness cases.
 
 ## 9. Open items
 
@@ -427,3 +472,15 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
   reading. It does not claim the category-level Lean statements beyond the
   discrete case of U/Characterization.lean:81.
 - O20 HIIT and QIIT examples: Bag and Charter of section 5.
+- O21 Dependent elimination on a family with path constructors: the
+  cases of the path constructors are PathP over the motive. Law 2
+  uniqueness ("Orbit induction into a set", section 3) needs it, so S7
+  needs it at the latest. S4 refuses elim on S1, Trunc1, Trunc0, Quot
+  and Orbit.
+- O22 elim on a neutral scrutinee stays neutral in S4 (no comp in the
+  motive). A Sum or Unit scrutinee is never a formal hcomp: `blocked`
+  (src/front/eval.c) makes elim on an `hcomp_stuck` value neutral before
+  the formal hcomp test of `reduce_elim`, and that test meets only a value
+  of a type with path constructors, which elim refuses (O21). A later
+  slice adds the Kan rule for elim or keeps the neutral form. The lowerer
+  refuses a neutral elim at a word position (REFUSE_LOWER, src/lower.c).

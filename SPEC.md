@@ -11,7 +11,7 @@ there. Delete the quoted line when the section is complete.
 > it writes. Name the host and the target. Say that the core types and core
 > operations are only those of `design/DESIGN.md`.
 
-orbit-lang is a language for <the domain>. Its type formers are F1 to F15 of
+orbit-lang is a language for <the domain>. Its type formers are F1 to F16 of
 `formers/FORMERS.md`. Its core data types and core operations are only the
 types and operations of `design/DESIGN.md` (the design).
 
@@ -39,7 +39,7 @@ The compiler writes the target; a program cannot.
 > Give each former whose status in `formers/tcc-evm-contract.md` is not DONE, and the
 > open item (section 9) that records it.
 
-The type formers are F1 to F15 of `formers/FORMERS.md`. This language uses
+The type formers are F1 to F16 of `formers/FORMERS.md`. This language uses
 the tcc-evm-contract column of the realization matrix. `formers/tcc-evm-contract.md` gives
 the host form of each former.
 

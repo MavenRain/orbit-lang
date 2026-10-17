@@ -238,6 +238,17 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
 - Examples: ledger-lang `Ref k` (indexed by `k : Kind`) and escrow-lang
   `Aggregation F` (indexed by `F : ChoiceRule`).
 
+### F16 Dependent eliminator
+
+- Formation: `elim P c1 ... cn x : P x` when `x : X`, `X` is `Sum A B` or
+  `Unit`, and `P : X -> Type k`.
+- Cases: for `Sum A B`, `c1 : (a : A) -> P (inl a)` and
+  `c2 : (b : B) -> P (inr b)`. For `Unit`, `c1 : P unit`.
+- Laws: `elim P f g (inl a) = f a`. `elim P f g (inr b) = g b`.
+  `elim P u unit = u`. Another scrutinee does not reduce.
+- Rules: another scrutinee type, a wrong case count or a wrong case type
+  gives `TYPE_MISMATCH`. There is no `elim` on a `Path` (no K).
+
 ## 4. Status words
 
 | Word | Meaning |

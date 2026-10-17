@@ -16,7 +16,7 @@ static const char *const OP_NAMES[] = {
   [OP_FLAG_NO] = "flagNo", [OP_PAIR] = "pair", [OP_INL] = "inl", [OP_INR] = "inr",
   [OP_NONE] = "none", [OP_SOME] = "some", [OP_NIL] = "nil", [OP_CONS] = "cons",
   [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_FIRST] = "first",
-  [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
+  [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option", [OP_ELIM] = "elim",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
   [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_UNFOLD] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
@@ -41,7 +41,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_UNIT_VAL] = 0, [OP_FLAG_YES] = 0, [OP_FLAG_NO] = 0, [OP_PAIR] = 2,
   [OP_INL] = 1, [OP_INR] = 1, [OP_NONE] = 0, [OP_SOME] = 1, [OP_NIL] = 0,
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
-  [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
+  [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_ELIM] = VARIES, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
   [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2,
@@ -720,6 +720,24 @@ static const Value *reduce_either(Machine *m, const Value *const *a, uint32_t n)
   return internal(m, "an either of a value that is not a Sum");
 }
 
+/* elim P c1 .. cn x with n = INST + 2 (USER ruling S4). On a neutral or a
+   formal hcomp at Sum or Unit, elim stays neutral (O22). */
+static const Value *reduce_elim(Machine *m, uint32_t inst, const Value *const *a, uint32_t n) {
+  const Value *x = a[n - 1u];
+  const Value *out;
+  if (blocked(m, x, OP_ELIM, inst, 0, a, n, &out))
+    return out;
+  if (val_is(x, OP_HCOMP))
+    return val_op(m, VAL_STUCK, OP_ELIM, inst, 0, a, n);
+  if (inst == 2u && val_is(x, OP_INL))
+    return apply_value(m, a[1], x->args[0]);
+  if (inst == 2u && val_is(x, OP_INR))
+    return apply_value(m, a[2], x->args[0]);
+  if (inst == 1u && val_is(x, OP_UNIT_VAL))
+    return a[1];
+  return internal(m, "an elim of a value that is not a Sum or Unit");
+}
+
 static const Value *reduce_option(Machine *m, const Value *const *a, uint32_t n) {
   const Value *out;
   if (blocked(m, a[2], OP_OPTION_ELIM, 0, 0, a, n, &out))
@@ -1345,6 +1363,8 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
     return f->param_count;
   if (op == OP_FOLD_FAMILY && f != NULL)
     return f->ctor_count + 2u;
+  if (op == OP_ELIM)
+    return inst + 2u;
   return UINT32_MAX;
 }
 
@@ -1763,6 +1783,7 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_SECOND:
   case OP_EITHER:
   case OP_OPTION_ELIM:
+  case OP_ELIM:
   case OP_PURE:
   case OP_MAP:
   case OP_BIND:
@@ -2234,6 +2255,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_either(m, a, n);
   case OP_OPTION_ELIM:
     return reduce_option(m, a, n);
+  case OP_ELIM:
+    return reduce_elim(m, inst, a, n);
   case OP_PURE:
     return reduce_pure(m, inst, a[0]);
   case OP_MAP:

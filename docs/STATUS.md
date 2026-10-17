@@ -236,3 +236,161 @@ file change, and the opus fallback died too:
 
 Sessions 2 to 5 (PART A, the kit lists, PARTS B and C, this section and
 the gate) did not call a builder. The main loop did the work by hand.
+
+## S4
+
+Slice S4 (Orbit and the dependent eliminator, PLAN section 8) is
+complete on commit 3a1ba76 plus the S4 changes. The kernel declares
+`Orbit` and `orbitProj` directly after the program definition `act`
+(src/front/front.c `orbit_after_act`, origin ORIGIN_DOMAIN, R inline):
+Orbit is the quotient of the voter orbits by the relation of `act`, with
+the HIT, QIT and truncation formers of the S2 port. The former `elim`
+is the dependent eliminator of `Sum A B` and `Unit`. The gate
+`make -B check` is GREEN, exit 0, with the clang `-Werror` check (log
+`orbit-lang-S4-gate.log`).
+
+USER ruling (S4, 2026-10-17, PLAN section 8): "Add a dependent
+eliminator in S4". A probe on 3a1ba76 showed that no Orbit value can get
+to a word position: each Orbit fold needs an isSet proof of its target,
+and with no dependent eliminator and no Unit eta, no Sum has one.
+`elim P c1 .. cn x` takes a motive `P : X -> Type k`, one case for each
+constructor and the scrutinee `x : X`, and has the type `P x`, for X
+`Sum A B` or `Unit`. The kernel refuses elim on a type with path
+constructors (O21), on Nat, List or a Path (no K), and elim with a wrong
+case count, case type or motive domain. With elim, `examples/orbit.lang`
+proves isSet Choice and folds Orbit into Choice.
+
+| Count | S3 (3a1ba76) | S4 | Reason |
+|---|---|---|---|
+| examples | 25 | 26 | `orbit` (guest): the slots, `act` (the Z2 flip), isSet Choice by elim and the fold `agree` of Orbit into Choice |
+| check refusals | 119 | 132 | 6 Orbit rows and 7 elim and Prop-like rows (table below) |
+| evals | 62 | 65 | `orbit agreeAll => inl unit`, `agreeSplit => inr unit`, `agreeFlipped => inr unit` |
+| lower refusals | 14 | 15 | `orbit-word` (REFUSE_LOWER) |
+| build checks | 31 | 32 | one check for each lower refusal (`orbit-word`) |
+
+The other counts do not change: parse refusals 19, kit-only refusals 22,
+runs 5, run refusals 10, asmtool 8 of 8, builds 3, dispatch 20, evm
+steps 43, precompile steps 18, mock 13 rows, diff 15 rows, emit 24, and
+the review, domain, path, fuel, output, lower and hashing regressions.
+Session 4 added `elim-motive-dom` (check refusals 131 to 132).
+
+Rows per mode. The S4 check rows and `orbit.lang` use no kit name and no
+literal, so they are guest rows outside the `kit.txt` lists. The lower
+rows run under `--kit` (S3 deviation 7), and `orbit-word` reads the
+contract state.
+
+| Gate | Kit rows | Guest rows |
+|---|---|---|
+| examples (`examples/kit.txt`) | 24 | 2 (`signature`, `orbit`) |
+| check refusals (`test/check/kit.txt`) | 80 | 52 (39 S3 rows and the 13 S4 rows) |
+| parse refusals (`test/parse/kit.txt`) | 17 | 2 |
+| evals | 61 | 4 (`signature flipped` and the 3 `orbit` rows) |
+| lower refusals | 15 | none |
+
+S4 rows. The Mutant column names the mutant that admits the row.
+
+| Row | Code | Form | Mutant |
+|---|---|---|---|
+| `orbit-guest-def` | REFUSE_SIG | a program `def Orbit` after `act` | G1 |
+| `orbitproj-guest-def` | REFUSE_SIG | a program `def orbitProj` after `act` | G1 |
+| `orbit-no-act` | NAME_UNKNOWN | `Orbit` in a program with the four type slots and no `act` | O1 |
+| `orbit-fold-no-set` | TYPE_MISMATCH | an Orbit fold into Choice with no quotSquash case | F1 |
+| `orbit-fake-set` | PATH_END | the quotSquash case `fun x y p q i j => x` (the ends are not p and q) | P1b |
+| `orbit-boundary` | PATH_END | a quotEq path with refl as the witness of R | P1 |
+| `elim-case-type` | TYPE_MISMATCH | an inl case of type Unit where the motive gives Sum Unit Unit | E4 |
+| `elim-case-count` | TYPE_MISMATCH | elim on Sum Unit Unit with one case | E2 |
+| `elim-scrutinee` | TYPE_MISMATCH | elim on Trunc0 (a type with path constructors, O21) | E1 |
+| `elim-path-k` | TYPE_MISMATCH | elim on a Path with the case refl (no K) | E1b |
+| `elim-motive-dom` | TYPE_MISMATCH | a motive on Sum Unit Unit for a Unit scrutinee | E3 |
+| `elim-motive-prop` | NAME_UNKNOWN | a motive into `Prop` (no sort Prop, R11) | N1b |
+| `unit-no-eta` | PATH_END | refl between two Unit variables (no Unit eta) | P1 |
+| `orbit-word` (lower) | REFUSE_LOWER | `spin`: elim at a word position on the fold `agree` of a formal hcomp at Orbit | none (L1 ruling) |
+
+Mutants, one at a time (runner `orbit-lang-work/S4-mutants.sh`, the S3
+head, `row()`, `mut()` and `admit()` verbatim). The new helper
+`lowadmit()` runs `langc --kit build` on a lower row: exit 0 is an
+admission. Run 1 (session 4) ran G0 to L1. Run 2 (session 5, log
+`orbit-lang-S4-s5-mutants.log`) ran them again and added P1b, E1b, N1b
+and the probe L1r. The table gives run 2. After the loop,
+`src/front/check.c`, `src/front/front.c`, `src/front/eval.c` and
+`domain/domain.lang` equal their saves (cmp), and `make -B check` is
+GREEN.
+
+| Mutant | Edit | Killer | Verdict |
+|---|---|---|---|
+| G0 kernel_sig admits | check.c `kernel_sig`: `if (1 \|\| d->origin != ORIGIN_PROGRAM \|\| ...` | both guest-def rows: want REFUSE_SIG, got REFUSE_NAME (a diagnostic kill) | KILLED |
+| G1 G0 + name_free + K6 | G0, `return 1 \|\| why == NULL ? 1 : FAIL(c, "REFUSE_NAME" ...` and `return 1 ? 1 : FAIL(c, "REFUSE_SIG", "%s is a ...` | `orbit-guest-def`, `orbitproj-guest-def`: got `ok` | KILLED |
+| O1 Orbit with no act | front.c: the anchor is `Group`, not `act`, and R is `d`, not `(act g d)` | `orbit-no-act`: got `ok` | KILLED |
+| E1 scrutinee test admits | check.c `rule_elim`: `if (0 * !val_is(st, OP_SUM) && ...` | `elim-scrutinee`: got `ok`; GAP `elim-path-k` (TYPE_INFER: the case type is a Pi) | KILLED |
+| E1b E1 + a K case type | E1 and check.c `elim_case`: a VAL_PATHP scrutinee gets the one case type `P refl` (the `rule_refl` core) | `elim-path-k`: got `ok` | KILLED |
+| E2 case count from the call | check.c `rule_elim`: `uint32_t want = k->argc - 2u;` | `elim-case-count`: got `ok` | KILLED |
+| E3 motive domain admits | check.c `rule_elim`: `\|\| 0 * !conv_values(c->m, c->level, pt->dom, st))` | `elim-motive-dom`: got `ok` | KILLED |
+| E4 inl case inferred | check.c `rule_elim`: case 0 is `infer(c, k->args[1], &pt)` | `elim-case-type`: got `ok` | KILLED |
+| F1 fold fills a missing case | check.c `rule_fold`, `fold_family`: the count test is `<=`, and a missing last case is the first case | `orbit-fold-no-set`: got `ok` | KILLED |
+| P1 PATH_END passes | check.c `end_fail`: `return 1 ? 1 : FAIL(c, "PATH_END", ...` | `orbit-boundary`, `unit-no-eta`: got `ok`; GAP `orbit-fake-set` (PATH_UIP, R9) | KILLED |
+| P1b P1 + PATH_UIP passes | P1 and `return 1 ? 1 : FAIL(c, "PATH_UIP", ...` | `orbit-fake-set`: got `ok` | KILLED |
+| N1 the domain gains Prop | domain.lang: `def Prop : Type 1 := Type 0` | GAP `elim-motive-prop` (REFUSE_NAME: Prop is a reserved name, R4) | SURVIVED |
+| N1b N1 + RESERVED without Prop | N1 (by hand) and check.c `RESERVED[] = {"Bool", "Text", "SProp"}` | `elim-motive-prop`: got `ok` | KILLED |
+| L1 elim on a formal hcomp reduces | eval.c `reduce_elim`: the hcomp line reduces elim on the hcomp base | GAP `orbit-word` (the same REFUSE_LOWER) | SURVIVED (equivalent, L1 ruling) |
+| L1r probe | eval.c `reduce_elim`: the hcomp line returns `internal(m, "L1r")` | `orbit-word`: the same REFUSE_LOWER, no INTERNAL | the line is not reached |
+
+Score: 12 of 14 mutants killed, 13 admissions. N1 meets a second refusal
+class (the RESERVED list, R4), and N1b, which removes both, is killed.
+E1b and P1b close the run 1 GAPs of E1 and P1.
+
+L1 ruling (session 5). `blocked` (src/front/eval.c) makes elim on a
+neutral scrutinee a stuck elim before the formal hcomp test of
+`reduce_elim`. The fold of a formal hcomp is an `hcomp_stuck` value
+(VAL_STUCK), so it never gets to that test. The test meets only a VAL_OP
+formal hcomp, which is a value of a type with path constructors, and
+elim refuses those types (O21). A Sum or Unit scrutinee is never a
+formal hcomp. The probe L1r keeps the same REFUSE_LOWER on `orbit-word`,
+so the row does not reach the line. The `orbit-word` refusal is the K4c
+refusal of a neutral elim at a word position (src/lower.c:645); the
+lowerer has no elim case. L1 is an equivalent mutant for this row, and
+no lowerer admission mutant is added (one site does not admit the row).
+Item 4 of the S4 build report ("orbit-word needs it") was wrong. PLAN
+section 9 O22 has the new wording.
+
+Deviations from the S4 build brief (9):
+
+1. `elim-motive-dom` is new (session 4): the motive domain test had no
+   row.
+2. `elim-motive-prop`: the case `unit` is now `Unit`. The row is well
+   typed when a sort Prop exists, so only the name refuses it.
+3. G1 needs three refusal classes: `kernel_sig`, the R4 test of
+   `name_free` and the K6 defined-name test. G0 alone changes REFUSE_SIG
+   to REFUSE_NAME (a diagnostic kill).
+4. O1 needs two sites: the anchor (`Group`, not `act`) and R with no
+   `act`.
+5. E1b, P1b and N1b have two sites each. N1b edits two files:
+   domain.lang by hand and check.c by `mut()`.
+6. The L1 ruling and the O22 wording (above).
+7. isSet Choice is proved by "sets from loops" (J on q reduces isSet A
+   to: each loop is refl), with a normalising map for each elim case
+   (normU, normL, normR), not encode-decode or Hedberg. J on q never
+   meets an inl and inr pair, so no proof needs disjointness. `disjoint`
+   (either into Type 0) is in the example and checks. Sanity mutants by
+   hand (scratch): loopL with `inl a` gives PATH_UIP (R9); the agreeAct
+   inr case refl gives PATH_END.
+8. `orbit-fold-no-set` folds into Choice (the probe used Trunc0).
+9. `orbit-word`: a fold over Quot in an inferred position gives
+   TYPE_INFER, so the fold is the typed definition `agree`. With a
+   constant point case the residual reduced away (build exit 0), so the
+   point case is `agree0` and the hcomp base reads the state. The row
+   uses `elim`, not `either`, at the word position. No new lowerer site.
+
+S4 adds one binder (the motive of `elim`) and no universe. The
+Prop-like rows are `elim-motive-prop` (a motive into Prop),
+`elim-path-k` (no K) and `unit-no-eta` (no Unit eta, no strict
+proposition).
+
+Builder deaths. In S4 session 1 the wf-builder stage died before any
+file change, and the opus fallback died too:
+
+| Session | Fable (429, rate limit) | opus fallback (`reasoning_extraction`) |
+|---|---|---|
+| 1 | req_011Cg7azZME7M6BDdZ3ZeN1f | req_011Cg7b3sWCmbHpgS8pVgsEz |
+
+Sessions 2 to 5 (PARTS A to C, the mutant runs, this section and the
+gate) did not call a builder. The main loop did the work by hand.

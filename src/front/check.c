@@ -74,6 +74,7 @@ typedef enum {
   RULE_SIGMA_PART,
   RULE_EITHER,
   RULE_OPTION,
+  RULE_ELIM,
   RULE_PURE,
   RULE_MAP,
   RULE_BIND,
@@ -139,6 +140,7 @@ static const Builtin BUILTINS[] = {
   {"payload", 1, RULE_SIGMA_PART, OP_PAYLOAD, OP_NAT, 1, VIS_GUEST},
   {"either", 3, RULE_EITHER, OP_EITHER, OP_SUM, 0, VIS_GUEST},
   {"option", 3, RULE_OPTION, OP_OPTION_ELIM, OP_OPTION, 0, VIS_GUEST},
+  {"elim", 3, RULE_ELIM, OP_ELIM, OP_SUM, 0, VIS_GUEST},
   {"pure", 1, RULE_PURE, OP_PURE, OP_NAT, 0, VIS_GUEST},
   {"map", 2, RULE_MAP, OP_MAP, OP_NAT, 0, VIS_GUEST},
   {"bind", 2, RULE_BIND, OP_BIND, OP_NAT, 0, VIS_GUEST},
@@ -792,6 +794,81 @@ static const Core *rule_option(Call *k) {
   f = z == NULL ? NULL : check(c, k->args[1], val_arrow(c->m, ot->args[0], res));
   k->type = res;
   return op3(c, OP_OPTION_ELIM, 0, 3, z, f, o);
+}
+
+/* The type of case I of elim with the motive PV on a value of type ST:
+   (a : A) -> P (inl a), (b : B) -> P (inr b), or P unit. */
+static const Value *elim_case(Checker *c, const Value *pv, const Value *st, uint32_t i) {
+  const Value *x = val_var(c->m, c->level);
+  if (val_is(st, OP_UNIT))
+    return apply_value(c->m, pv, tyop(c, OP_UNIT_VAL, 0, NULL, NULL, NULL));
+  return here(c, core_bind(c, CORE_PI, i == 0u ? "a" : "b", quote_value(c->m, c->level, st->args[i]),
+                           quote_value(c->m, c->level + 1u, apply_value(c->m, pv, tyop(c, i == 0u ? OP_INL : OP_INR, 1, x, NULL, NULL)))));
+}
+
+/* A printed motive has no binder annotation. Its domain can instead come
+   from the scrutinee at the Unit or Sum argument position. */
+static const Value *elim_domain(Checker *c, const Term *const *args, uint32_t argc) {
+  const Value *dom = lam_domain(c, args[0]);
+  uint32_t i;
+  if (dom != NULL || args[0]->kind != TERM_LAM || args[0]->left != NULL)
+    return dom;
+  for (i = 2u; i < argc && i < 4u; i++) {
+    if (try_infer(c, args[i], &dom) != NULL && val_is(dom, i == 2u ? OP_UNIT : OP_SUM))
+      return dom;
+  }
+  return NULL;
+}
+
+/* elim P c1 .. cn x (USER ruling S4): the dependent eliminator of Sum A B
+   (two cases) and Unit (one case), with the motive P : X -> Type k and the
+   type P x. A type with path constructors, Nat, List or a Path has no elim
+   (O21, no K). */
+static const Core *rule_elim(Call *k) {
+  Checker *c = k->c;
+  const Value *st = elim_domain(c, k->args, k->argc);
+  const Value *pt = NULL;
+  const Value *cod;
+  const Value *pv;
+  const Core *cores[4] = {NULL, NULL, NULL, NULL};
+  const Core *s;
+  uint32_t want;
+  uint32_t i;
+  if (st != NULL && k->args[0]->kind == TERM_LAM && k->args[0]->left == NULL) {
+    uint64_t level = 0;
+    const Core *body;
+    if (!push(c, k->args[0]->name, st))
+      return NULL;
+    body = check_type(c, k->args[0]->right, &level);
+    pop(c);
+    cores[0] = core_bind(c, CORE_LAM, k->args[0]->name, NULL, body);
+    pt = val_arrow(c->m, st, val_univ(c->m, level));
+  } else {
+    cores[0] = infer(c, k->args[0], &pt);
+  }
+  if (cores[0] == NULL)
+    return NULL;
+  cod = pt != NULL && pt->kind == VAL_PI ? closure_apply(c->m, pt, val_var(c->m, c->level)) : NULL;
+  if (cod == NULL || cod->kind != VAL_UNIV)
+    return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a motive of type X -> Type k, found a term of type %s", show(c, pt)));
+  st = pt->dom;
+  if (!val_is(st, OP_SUM) && !val_is(st, OP_UNIT))
+    return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a scrutinee of type Sum A B or Unit, found a motive on %s", show(c, st)));
+  want = val_is(st, OP_SUM) ? 2u : 1u;
+  if (k->argc < want + 2u)
+    return nul(FAIL(c, "TYPE_MISMATCH", "elim on %s needs a motive, %u cases and a scrutinee", show(c, st), want));
+  s = check(c, k->args[want + 1u], st);
+  if (s == NULL)
+    return NULL;
+  pv = here(c, cores[0]);
+  for (i = 0; i < want && cores[i] != NULL; i++)
+    cores[i + 1u] = check(c, k->args[i + 1u], elim_case(c, pv, st, i));
+  if (cores[want] == NULL)
+    return NULL;
+  cores[want + 1u] = s;
+  k->type = apply_value(c->m, pv, here(c, s));
+  k->used = want + 2u;
+  return core_op(c, OP_ELIM, want, 0, cores, want + 2u);
 }
 
 static const Core *rule_pure(Call *k) {
@@ -1685,6 +1762,8 @@ static const Core *rule(Call *k) {
     return rule_sigma_part(k);
   case RULE_EITHER:
     return rule_either(k);
+  case RULE_ELIM:
+    return rule_elim(k);
   case RULE_OPTION:
     return rule_option(k);
   case RULE_PURE:
@@ -2030,6 +2109,9 @@ static const Core *apply_known(Checker *c, const Term *whole, const Head *h, con
   uint32_t arity = known_arity(c, h);
   Call k;
   const Core *core;
+  if (h->kind == HEAD_BUILTIN && h->builtin->rule == RULE_ELIM && argc == 3u &&
+      hint != NULL && hint->kind == VAL_PI && val_is(elim_domain(c, args, argc), OP_SUM))
+    return eta(c, whole, hint, type);
   if (argc < arity && hint != NULL && hint->kind == VAL_PI)
     return eta(c, whole, hint, type);
   if (argc < arity)
@@ -2799,6 +2881,15 @@ static int check_sig(Checker *c, const Decl *d, const Value *tv) {
   return FAIL(c, "REFUSE_SIG", "%s is a %s name of the design signature (PLAN section 3), reserved until a later slice gives it", d->name, SIGNATURE[i].kind == SIG_DEFINED ? "defined" : "primitive");
 }
 
+/* The kernel gives Orbit and orbitProj after act (orbit-lang S4, PLAN
+   section 8). A program definition of either name is REFUSE_SIG, before the
+   name check, so the code is the same before and after act. */
+static int kernel_sig(Checker *c, const Decl *d) {
+  if (d->origin != ORIGIN_PROGRAM || (strcmp(d->name, "Orbit") != 0 && strcmp(d->name, "orbitProj") != 0))
+    return 1;
+  return FAIL(c, "REFUSE_SIG", "%s is a defined name of the design signature (PLAN section 3); the kernel gives it after act", d->name);
+}
+
 static int check_def(Checker *c, const Decl *d) {
   Machine *m = c->m;
   uint64_t level = 0;
@@ -2892,7 +2983,7 @@ static int check_decl(Checker *c, const Decl *d) {
     return FAIL(c, "REFUSE_AXIOM", "an axiom has no proof (rule R2)");
   if (d->is_rec)
     return FAIL(c, "REFUSE_REC", "def rec is refused (rule R3); use fold or unfold");
-  if (!name_free(c, d->name))
+  if (!kernel_sig(c, d) || !name_free(c, d->name))
     return 0;
   return d->kind == DECL_FAMILY ? check_family(c, d) : check_def(c, d);
 }
