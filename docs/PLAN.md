@@ -19,13 +19,17 @@ USER rulings (the request, 2026-10-16):
 - Host: TinyCC.
 - Target: EVM-deployable bytecode for any EVM chain.
 
-Builder calls (NOT ruled; section 9 gives each one):
+USER rulings (S1, 2026-10-16):
 
-- O1: the name orbit-lang.
-- O2: the kit is hosts/tcc-evm-contract. The cubical kernel comes from the
-  sealed-lang lineage (coin-lang kernel, already merged onto this kit).
-- Tests are guest-language files plus `langc run` scripts. The kit gate
-  scripts stay. We add no new harness.
+- Every default in section 9 is RULED. Where an item has options, (a) is
+  the ruling.
+- Proof irrelevance is prohibited. orbit-lang has no Prop-like types: no
+  Prop, no SProp, no strict propositions, no irrelevant arguments or
+  fields, no definitional proof irrelevance, no K, no UIP. A proposition is
+  a type with an isProp proof, and that proof is data the kernel checks.
+- The kit is hosts/tcc-evm-contract (O2). Tests are guest-language files
+  plus `langc run` scripts. The kit gate scripts stay. We add no new
+  harness.
 
 ## 2. The reference design
 
@@ -169,8 +173,10 @@ Guest examples for S6:
   types the amendment history: each constitution is ratified by the one
   before it.
 
-Proof irrelevance is not admitted: no Prop, no SProp, no irrelevant
-arguments, no K, no UIP (O17).
+Proof irrelevance is prohibited (USER ruling, section 1): no Prop-like
+types, no SProp, no irrelevant arguments, no definitional proof
+irrelevance, no K, no UIP (O17). isProp and isSet are ordinary guest types.
+Each slice adds a refusal row for each Prop-like form it could admit.
 
 ## 6. The zero-knowledge ballot layer
 
@@ -243,8 +249,8 @@ for each build), the counts in docs/STATUS.md, and a USER commit.
 | Slice | Content | Gate additions |
 |---|---|---|
 | S0 | seed: design, plan, kit scaffold | kit gate GREEN |
-| S1 | survey + rulings on O1 to O20; no build | none |
-| S2 | base span: kit items made internal, sample domain removed, the 11 types and 9 operations declared; EVM runner support for 0x05, 0x06, 0x07 (from sealed-lang bc8e168, runner side only) | refusals for a kit name in guest code; precompile vectors (EIP-196) |
+| S1 | rulings on O1 to O20: DONE 2026-10-16, all defaults, proof irrelevance prohibited | none |
+| S2 | base span: kit items made internal, sample domain removed, the 11 types and 9 operations declared; EVM runner support for 0x05, 0x06, 0x07 (from sealed-lang bc8e168, runner side only) | refusals for a kit name in guest code and for Prop, SProp and irrelevance markers; precompile vectors (EIP-196) |
 | S3 | paths and Kan operations (sealed-lang cherry-picks) | wrong end point, I as a type, irrelevance-only conversion |
 | S4 | HITs, QITs, truncations; Orbit as a quotient | missing path case, wrong boundary, quotient fold without isSet, path at run time |
 | S5 | Glue, ua, uaBeta, hcomp at U (coin-lang merge) | Glue boundary mismatch, ua on a non-equivalence |
@@ -256,7 +262,8 @@ for each build), the counts in docs/STATUS.md, and a USER commit.
 
 ## 9. Open items
 
-All of these are builder calls. S1 asks the USER to rule on each one.
+USER ruling (S1, 2026-10-16): every default below is RULED; where an item
+has options, (a) is the ruling. O17 is now a USER ruling, not a default.
 
 - O1 Name: orbit-lang, after the orbit quotient that carries anonymity.
 - O2 Kernel route: (a, default) the sealed-lang lineage (S3, S4 cherry-pick;
@@ -302,8 +309,8 @@ All of these are builder calls. S1 asks the USER to rule on each one.
 - O16 Chains: Ethereum mainnet has 0x05 to 0x08. Telcoin Network: confirm
   the precompile set and the EIP-170 limit from the chain spec or an RPC
   probe. The repo gate runs only the kit EVM runner.
-- O17 Proof irrelevance: not admitted (sibling default; the request does not
-  say).
+- O17 Proof irrelevance: PROHIBITED (USER ruling 2026-10-16). No Prop-like
+  types of any kind (section 1).
 - O18 Off-chain commands: `langc prove` writes the cast calldata; `langc
   run` evaluates ballots and tallies in the host.
 - O19 Scope of the claim: orbit-lang proves the laws on the quotient
