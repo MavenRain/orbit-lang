@@ -1,12 +1,12 @@
 # Validation
 
 Date: 2026-10-18. tcc: 0.9.28rc. evm (go-ethereum): 1.14.12. Host
-executable: `build/langc` at 8dd82a3 plus the S6 changes.
+executable: `build/langc` at 9c7b033 (S7 B4 changes only the records).
 
 `make -B check` passes: it builds `langc` and the test tools with tcc,
 runs the clang `-Wall -Wextra -Wswitch-enum -Werror` check, and runs the
-gate scripts. It runs 31 examples, 19 parse refusals, 150 check
-refusals, 22 kit-only refusals, 80 evals, 5 runs, 10 run refusals, 8
+gate scripts. It runs 34 examples, 19 parse refusals, 161 check
+refusals, 22 kit-only refusals, 93 evals, 5 runs, 10 run refusals, 8
 asmtool checks, 3 builds, 16 lower refusals, 33 build checks, 20
 dispatch checks, 43 evm steps, 18 precompile steps, 13 mock rows, 15
 diff rows, 24 emit regressions and the review, domain, path, fuel,
@@ -93,3 +93,19 @@ one argument too many, and a block fold whose parameters do not inhabit
 the telescope of a sort. Mutants M3b, HI1, HI2, BO, BOb, FA, SR, CF and FS
 are killed (9 of 9). BO and BOb are code kills, and FA needed a second
 run with the new row `block-fold-extra` (docs/STATUS.md "## S6").
+
+The S7 review adds the dependent eliminator on a domain family with path
+constructors (F16, USER ruling S7 Q1), the DAO prelude after `orbitProj`
+and `outcomeSet`, the proof slot `outcomeSet`, the slot `menu`, and the
+domain families Pos and Word (PLAN section 8). The review adds the kit
+example `elim`, the guest examples `dao` (laws 1 to 4 as guest theorems,
+the menu and the Charter history fold) and `bagorbit` (`bagOrbit : (n :
+Size) -> Equiv (OrbitN n) (Bag Choice n)`), 13 evals and 11 check
+refusals. Refusals cover elim with a wrong case count, a path case at a
+constant line, a motive without the index binder, elim on a block sort,
+Prop in the motive telescope, a wrong type at the slot `outcomeSet` or
+`menu`, a program definition of a prelude name, a program without
+`outcomeSet`, a constitution that is not invariant and a wrong gov unit.
+Mutants EC, EP, ES, EV, PJ, PS, OS, MN and HIW are killed (9 of 9). EC,
+PS, OS and HIW are code kills, and HIW closes the S6 open item
+`hiit-wrong-index` (docs/STATUS.md "## S7").

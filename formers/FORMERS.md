@@ -241,13 +241,30 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
 ### F16 Dependent eliminator
 
 - Formation: `elim P c1 ... cn x : P x` when `x : X`, `X` is `Sum A B` or
-  `Unit`, and `P : X -> Type k`.
+  `Unit`, and `P : X -> Type k`. S7 (USER ruling S7, Q1): `X` can also be
+  a domain family with path constructors (F18) at its parameters and
+  indices, and then the motive binds the indices and the value:
+  `P : (idx) -> F params idx -> Type k`. A block sort (F19) is outside
+  `elim`.
 - Cases: for `Sum A B`, `c1 : (a : A) -> P (inl a)` and
-  `c2 : (b : B) -> P (inr b)`. For `Unit`, `c1 : P unit`.
+  `c2 : (b : B) -> P (inr b)`. For `Unit`, `c1 : P unit`. For a family, a
+  point case takes the fields and an induction binder after each recursive
+  field or path field, and gives `P idx (c params fields)`. A path case
+  gives `PathP (fun i => P idx (c .. i)) img0 img1`, and a squash case
+  gives the square over `P`.
 - Laws: `elim P f g (inl a) = f a`. `elim P f g (inr b) = g b`.
-  `elim P u unit = u`. Another scrutinee does not reduce.
-- Rules: another scrutinee type, a wrong case count or a wrong case type
-  gives `TYPE_MISMATCH`. There is no `elim` on a `Path` (no K).
+  `elim P u unit = u`. On a family constructor, `elim` applies the case to
+  the fields and to the elims of the recursive fields; on a path
+  constructor at `r` it gives the case at `r`; on a squash at `r` and `s`
+  it gives the case at `r` and `s`. On a formal hcomp or a neutral value,
+  `elim` stays neutral (O22). Another scrutinee does not reduce.
+- Rules: another scrutinee type, a wrong case count, a wrong case type, a
+  motive without the index binders or a block sort gives `TYPE_MISMATCH`.
+  A wrong end of a path case gives `PATH_END`. `Prop` in the motive
+  telescope gives `NAME_UNKNOWN`. There is no `elim` on a `Path` (no K).
+- Examples: `examples/elim.lang` (elim on Size, Bag and Quot);
+  `orbitExt` in `examples/dao.lang`; `fromBagW` and the homotopies in
+  `examples/bagorbit.lang`.
 
 ### F17 Glue and univalence
 
@@ -265,7 +282,7 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
 - Laws: where the key of the branch `pack T e` holds, `Glue A phi sys = T`,
   `glue sys a = t` and `unglue g = witness e g`. `unglue (glue sys a) = a`.
 - Univalence: the domain definitions `isContr`, `fiber`, `isEquiv`, `Equiv`,
-  `idEquiv`, `isoToEquiv`, `ua` and `uaArrow` (`domain/domain.lang:80-142`).
+  `idEquiv`, `isoToEquiv`, `ua` and `uaArrow` (`domain/domain.lang:92-154`).
   `Equiv A B` is `Sigma (f : A -> B) (isEquiv A B f)`. `isoToEquiv A B f g s t
   : Equiv A B` makes an equivalence from an isomorphism. `ua A B e :
   Path (Type 0) A B` is the Glue line `Glue B (~i \/ i) [ ~i -> pack A e,
@@ -310,6 +327,10 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
   the lists of n elements of A up to a swap of the first two (`swap`), and
   `bagSquash` makes it a set at each index. `examples/hiit.lang` folds a
   bag into `Trunc0 Size` (`bagCount`, `bagTwoCount`, `bagSwapCount`).
+  S7 adds `Pos n` (the n positions of a bag) and `Word n` (the words of
+  adjacent swaps at n) (`domain/domain.lang:64-75`).
+  `examples/bagorbit.lang` gives `bagOrbit : (n : Size) -> Equiv (OrbitN
+  n) (Bag Choice n)` with `OrbitN n := Quot (Pos n -> Choice) (swapR n)`.
 
 ### F19 Inductive-inductive block (QIIT)
 
@@ -337,7 +358,7 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
   fields. A field of the sort j folds with the same cases at `Tj`. A path
   field folds at the sort under the path. The path and square laws of F18
   hold at each sort. `transp` at a sort of a block stays neutral.
-- Examples: `Charter R` and `Ratified R c` (`domain/domain.lang:64-78`):
+- Examples: `Charter R` and `Ratified R c` (`domain/domain.lang:76-90`):
   `genesis`, `adopt`, `ratify`, the path constructor `adoptTwice` (law 4
   in the type: a second adoption of the same rule is a path from the
   first) and the squash constructors `charterSquash` and `ratifiedSquash`.
@@ -416,6 +437,7 @@ changes, update the host file and this matrix in the same change.
 | S2 | Precompile | n/a | n/a | n/a | DONE in `check` and `eval` as opaque operations (a closed curve application stays stuck): `examples/precompile.lang`. DONE: EVM output, one STATICCALL per execution of a lowered curve statement (`src/lower.c` lower_curve, `src/evm.c` IR_STMT_PRECOMPILE); `test/precompile.sh` 18 steps; `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | S3 | Paths and Kan operations | n/a | n/a | n/a | DONE in `check` and `eval`: `I`, `i0`, `i1`, `PathP`, `Path`, `refl`, `sym`, `cong`, `funExt` (check only, R29), `transp` and `hcomp` (base lines Nat, Flag, U256, Addr, Unit and Map, R27; the `m->fuel` budget, R28); the guest defs `transport`, `subst`, `J`, `JRefl` and `trans` (`domain/domain.lang:8-21`, R25): `examples/paths.lang`, `examples/kan.lang`; `build/pathtool` 19 roundtrips. EVM output: erased; a path residual at a word position gives REFUSE_LOWER (`test/lower/path-word.lang`, R24); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | S4 | HITs and QITs | n/a | n/a | n/a | DONE in `check` and `eval`: a `family` constructor with interval fields and a boundary system (HIT_BOUNDARY); `fold` with one case for each path constructor (a fold of Trunc0 or Quot needs the isSet case); the end rule, the formal hcomp at a HIT and `transp` along a family parameter line; S1, Trunc1, Trunc0 and Quot with isProp and isSet (`domain/domain.lang:26-49`, R32): `examples/circle.lang`, `examples/trunc.lang`, `examples/quot.lang`; `build/pathtool` 26 roundtrips. EVM output: erased; a path constructor residual or a formal hcomp at a word position gives REFUSE_LOWER (`test/lower/loop-word.lang`, R31); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| S5 | Glue and univalence | n/a | n/a | n/a | DONE in `check` and `eval`: `Glue`, `glue` and `unglue` (VIS_GUEST) with SYSTEM_COVER, GLUE_BINDER, GLUE_EQUIV, GLUE_BOUNDARY and UNGLUE_TYPE; `hcomp` at a Glue type and at `Type 0` (HCOMP_UNIVERSE above `Type 0`); the guest defs `isContr`, `fiber`, `isEquiv`, `Equiv`, `idEquiv`, `isoToEquiv`, `ua` and `uaArrow` (`domain/domain.lang:80-142`); `Fin`, `finAdd` and `finNeg` VIS_INTERNAL (O23): `examples/equiv.lang`, `examples/glue.lang`, `examples/univ.lang`, `examples/orbit.lang`; `build/pathtool` 38 rows. EVM output: erased; the `unglue` of an `hcomp` at a Glue type over a word gives REFUSE_LOWER (`test/lower/glue-word.lang`, O22); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| S6 | HIITs and QIITs | n/a | n/a | n/a | DONE in `check` and `eval`: an index telescope and constructor results on a domain `family` (HIT_INDEX); `and` blocks of sorts (BLOCK_ORDER); `fold` over an indexed sort with a constant target, and over a block with one target for each sort, the cases sort by sort in declaration order and the value (TYPE_MISMATCH for a wrong count, a missing squash case or a parameter mismatch); `transp` at an indexed or block sort stays neutral; Size, Bag, Charter and Ratified (`domain/domain.lang:50-78`): `examples/hiit.lang`, `examples/qiit.lang`; fronttool `domain` rows. EVM output: erased, no new lowering (16 lower refusals); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| S5 | Glue and univalence | n/a | n/a | n/a | DONE in `check` and `eval`: `Glue`, `glue` and `unglue` (VIS_GUEST) with SYSTEM_COVER, GLUE_BINDER, GLUE_EQUIV, GLUE_BOUNDARY and UNGLUE_TYPE; `hcomp` at a Glue type and at `Type 0` (HCOMP_UNIVERSE above `Type 0`); the guest defs `isContr`, `fiber`, `isEquiv`, `Equiv`, `idEquiv`, `isoToEquiv`, `ua` and `uaArrow` (`domain/domain.lang:92-154`); `Fin`, `finAdd` and `finNeg` VIS_INTERNAL (O23): `examples/equiv.lang`, `examples/glue.lang`, `examples/univ.lang`, `examples/orbit.lang`; `build/pathtool` 38 rows. EVM output: erased; the `unglue` of an `hcomp` at a Glue type over a word gives REFUSE_LOWER (`test/lower/glue-word.lang`, O22); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| S6 | HIITs and QIITs | n/a | n/a | n/a | DONE in `check` and `eval`: an index telescope and constructor results on a domain `family` (HIT_INDEX); `and` blocks of sorts (BLOCK_ORDER); `fold` over an indexed sort with a constant target, and over a block with one target for each sort, the cases sort by sort in declaration order and the value (TYPE_MISMATCH for a wrong count, a missing squash case or a parameter mismatch); `transp` at an indexed or block sort stays neutral; Size, Bag, Charter and Ratified (`domain/domain.lang:50-63,76-90`): `examples/hiit.lang`, `examples/qiit.lang`; fronttool `domain` rows. EVM output: erased, no new lowering (16 lower refusals); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| S7 | DAO prelude and laws | n/a | n/a | n/a | DONE in `check` and `eval`: `elim` on a domain family with path constructors, a motive over the indices and the value, PathP path cases and square squash cases (F16; TYPE_MISMATCH for a wrong count, a motive without the index binders or a block sort, PATH_END for a wrong path case end); `elim` on a path constructor or a squash reduces at its interval points, and on a formal hcomp stays neutral; the DAO prelude `Config`, `Constitution`, `Aggregation`, `Tally`, `aggregate`, `gov` and `amend` (an inline `kernel/dao.lang`, spliced after `orbitProj` and `outcomeSet`, `src/front/front.c:26,79-85`); the proof slot `outcomeSet` and the slot `menu` (REFUSE_SIG); Pos and Word (`domain/domain.lang:64-75`): `examples/elim.lang`, `examples/dao.lang` (laws 1 to 4), `examples/bagorbit.lang` (`bagOrbit : (n : Size) -> Equiv (OrbitN n) (Bag Choice n)`). EVM output: erased, no new lowering (16 lower refusals); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | K4a0 | Map | n/a | n/a | n/a | DONE in `check`, `eval` and EVM output: `mapEmpty`, `mapGet`, `mapSet` over word keys and word values, one storage slot per key at keccak256(key . slot): `examples/map.lang`, `docs/host/README.md` section `Maps` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |

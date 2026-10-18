@@ -685,3 +685,174 @@ Builder deaths: none. S6 called no builder (the USER route). The main
 loop did the work by hand in sessions 1 to 6
 (`orbit-lang-work/S6-HANDOFF.md`): B3 in session 4, the B4 rows and the
 mutant runs in session 5, and this section and the gate in session 6.
+
+## S7
+
+Slice S7 (the DAO prelude and laws 1 to 4, PLAN section 8) is complete on
+commit 9c7b033 plus the B4 records. S7 is new work in this lineage (O2
+(a)). USER commit 96c74e1 holds the S7 PLAN text (the builder call and the
+USER ruling S7). USER commit 676c7a8 holds B1 (elim on a domain family
+with path constructors: check.c `rule_elim` and `elim_on_family`, eval.c
+`elim_family` and `stuck_elim`, `examples/elim.lang`, 5 check rows and 8
+eval rows) with the USER fixes. USER commit eafa1df holds B2 (the DAO
+prelude, the slots `outcomeSet` and `menu`, the first part of
+`examples/dao.lang`, 4 check rows and 4 eval rows). USER commit ac157d0
+holds B3 part A (laws 1 to 4 and the Charter history fold in
+`examples/dao.lang`, the PLAN rows `constitution-noninvariant` and
+`gov-unit-wrong`, the eval row `dao historyOne`). USER commit 9c7b033 holds
+B3 part B (the domain families Pos and Word, `domain/domain.lang:64-75`,
+and `examples/bagorbit.lang`). B4 adds the mutant run (9 mutants) and the
+records, and no source change. The gate `make -B check` is GREEN, exit 0,
+with the clang `-Werror` check (log `orbit-lang-S7-s10-gate.log`).
+
+Rulings. The S7 builder call (PLAN section 8, 2026-10-18) gives the
+eliminator, the prelude, the laws, the menu, the rows and the slices. The
+USER ruling S7: Q1 full elim on families (block sorts stay outside elim);
+Q2 the proof slot `outcomeSet`; Q3 the slot `menu` after the prelude; Q4
+general n (`bagOrbit : (n : Size) -> Equiv (OrbitN n) (Bag Choice n)`, with
+the domain family Pos over Size); Q5 Group as the words of adjacent swaps
+(the domain family Word over Size). S7 adds no former: F16 now covers a
+domain family with path constructors, so SPEC still says F1 to F19.
+
+| Count | S6 (8b11846) | S7 | Reason |
+|---|---|---|---|
+| examples | 31 | 34 | `elim` (kit, Nat literals), `dao` and `bagorbit` (guest) |
+| check refusals | 150 | 161 | B1 `elim-family-count`, `elim-motive-index`, `elim-block` (TYPE_MISMATCH), `elim-path-case` (PATH_END), `elim-family-prop` (NAME_UNKNOWN); B2 `outcome-set-type`, `menu-type`, `dao-redefine` (REFUSE_SIG), `dao-no-set` (NAME_UNKNOWN); B3 `constitution-noninvariant`, `gov-unit-wrong` (PATH_END) |
+| evals | 80 | 93 | B1 `elim bagTwoCountE`, `replicateTwo`, `swapAt0`, `swapAt1`, `bagSwapE`, `quotThree`, `quotEqAt`, `hcompE`; B2 `dao tallied`, `flippedTally`, `nextRule`, `amended`; B3 `dao historyOne` |
+
+The other counts do not change: parse refusals 19, kit-only refusals 22,
+runs 5, run refusals 10, asmtool 8 of 8, builds 3, lower refusals 16,
+build checks 33, dispatch 20, evm steps 43, precompile steps 18, mock 13
+rows, diff 15 rows, emit 24, and the review, domain, path, fuel, output,
+lower and hashing regressions. The USER fixes in 676c7a8 add fronttool
+rows to the domain regressions.
+
+Rows per mode. `examples/elim.lang` uses Nat literals, so it and its 8
+eval rows are kit rows, and `elim-path-case` (motive `Trunc0 Nat`) is a
+kit row. The other S7 rows and examples are guest rows.
+
+| Gate | Kit rows | Guest rows |
+|---|---|---|
+| examples (`examples/kit.txt`) | 28 (27 S6 rows and `elim`) | 6 (`signature`, `orbit`, `hiit`, `qiit`, `dao`, `bagorbit`) |
+| check refusals (`test/check/kit.txt`) | 90 (89 S6 rows and `elim-path-case`) | 71 (61 S6 rows and 10 S7 rows) |
+| parse refusals (`test/parse/kit.txt`) | 17 | 2 |
+| evals | 77 (69 S6 rows and the 8 `elim` rows) | 16 (11 S6 rows and the 5 `dao` rows) |
+| lower refusals | 16 | none |
+
+S7 rows. The Mutant column names the S7 mutant that kills the row, or
+changes the result of its example. An older site has no S7 mutant.
+
+| Row | Code | Mode | Form | Mutant |
+|---|---|---|---|---|
+| `elim-family-count` | TYPE_MISMATCH | guest | elim on a family with a third case at the scrutinee | EC (a code kill) |
+| `elim-path-case` | PATH_END | kit | a path case at a constant line (motive `Trunc0 Nat`, so the other cases are valid) | none (the path end check fires first) |
+| `elim-motive-index` | TYPE_MISMATCH | guest | a motive without the index binder | none |
+| `elim-block` | TYPE_MISMATCH | guest | elim on the block sort `Charter Size` | none (older site) |
+| `elim-family-prop` | NAME_UNKNOWN | guest | `Prop` in the motive telescope (rule R11) | none (older site) |
+| `outcome-set-type` | REFUSE_SIG | guest | `outcomeSet` at a type that is not `isSet Outcome` | OS (a code kill) |
+| `menu-type` | REFUSE_SIG | guest | `menu` at a type that is not `Outcome -> Constitution` | MN |
+| `dao-redefine` | REFUSE_SIG | guest | a program `def aggregate` after the slots | PS (a code kill) |
+| `dao-no-set` | NAME_UNKNOWN | guest | a program without `outcomeSet` has no `aggregate` | none |
+| `constitution-noninvariant` | PATH_END | guest | refl as the invariance proof of the choice of member `inl unit` under the flip act (`Outcome := Trunc0 Choice`) | none (older site, the refl end) |
+| `gov-unit-wrong` | PATH_END | guest | refl at the unit law of `keepCon` for a G that is the choice of member `inl unit` | none (older site, the refl end) |
+| `elim` eval rows (8) | value | kit | elim on bagCons, on swap at i0, i1 and a neutral point, on quot, on quotEq at a neutral point, and on a formal hcomp (neutral, O22) | EV (`bagSwapE`, `quotEqAt`) |
+| `dao` eval rows (5) | value | guest | the tally, the flipped tally, the next rule, the amended rule and the Charter history | PJ (the example) |
+| `examples/dao.lang`, `examples/bagorbit.lang` | ok | guest | laws 1 to 4, the menu, the history fold; `bagOrbit` | EP, ES, PJ |
+| fronttool `hiit-wrong-index` (S6) | HIT_INDEX | domain | an end of the path constructor `vbad` is the family at another index | HIW (a code kill) |
+
+Mutants, one at a time (runner `orbit-lang-work/S7-B4-mut.sh`, log
+`orbit-lang-work/S7-B4-mutants.log`). Each mutant is one line, made and
+reverted by the Edit tool, with `make -B` for each build. The runner stops
+unless `src` differs from HEAD by exactly one line. After each revert,
+`git diff --quiet -- src` exits 0. The first EV row of the log is VOID (it
+ran eval without `--kit`); the second EV row is the valid one. After the
+loop, the gate on clean source exits 0 (log `orbit-lang-S7-s10-gate-pre.log`).
+
+| Mutant | Edit | Killer | Verdict |
+|---|---|---|---|
+| EC | check.c `elim_on_family` (called from `rule_elim`): `uint32_t want = 0 * f->ctor_count;` | `elim-family-count`: TYPE_NOT_FUNCTION at `bad` ("a term of type Size is applied to an argument"); the row wants TYPE_MISMATCH | KILLED (code) |
+| EP | check.c `path_case_type`: the line of the path case at `val_iend(m, 0)` (a constant line) | `examples/dao.lang`: TYPE_MISMATCH at `orbitExt` (the elim lemma under `desc`); `examples/bagorbit.lang`: TYPE_MISMATCH at `quotExt` | KILLED |
+| ES | check.c `square_type`: the inner line at `val_iend(m, 0), val_iend(m, 0)` | `examples/bagorbit.lang`: TYPE_MISMATCH at `quotExt` (the quotSquash case) | KILLED |
+| EV | eval.c `elim_family`: a path constructor value goes to `stuck_elim` | eval rows `elim bagSwapE` and `elim quotEqAt`: a stuck elim | KILLED |
+| PJ | front.c `&& (1 \|\| splice_after(... DAO_AFTER ...))` | `examples/dao.lang`: NAME_UNKNOWN at `agreeCon` (Constitution) | KILLED |
+| PS | check.c `kernel_sig`: `return 1 \|\| FAIL(...)` at SIG_DEFINED | `dao-redefine`: REFUSE_NAME at `aggregate` (rule R4, a domain definition); the row wants REFUSE_SIG | KILLED (code) |
+| OS | check.c `slot_ok`: `if (strcmp(row->name, "outcomeSet") == 0) return 1;` | `outcome-set-type`: TYPE_MISMATCH at `aggregate` (the prelude uses `outcomeSet` as `isSet Outcome`); the row wants REFUSE_SIG | KILLED (code) |
+| MN | check.c `slot_ok`: `if (strcmp(row->name, "menu") == 0) return 1;` | `menu-type`: got `ok` | KILLED |
+| HIW | check.c:3132 `if (0 * (bs[i].body == NULL))` | fronttool: "FAIL domain: wanted HIT_INDEX, got TYPE_MISMATCH" (`vbad`) | KILLED (code) |
+
+Score: 9 of 9 mutants killed. MN is an admission. EP, ES and PJ refuse a
+valid program (TYPE_MISMATCH, NAME_UNKNOWN). EV gives a stuck elim in
+eval. EC, PS, OS and HIW are code kills: the row stays refused, with
+another code at a later site. HIW confirms the survey H prediction and
+closes the S6 open item: the `hiit-wrong-index` site now has a mutant.
+
+The design of `examples/bagorbit.lang` (Q4, general n). `OrbitN n := Quot
+(Pos n -> Choice) (swapR n)`. f is a Quot fold into `Bag Choice n`, and g
+(`fromBag`) is elim on Bag with the motive `fun k y => OrbitN k`. The two
+homotopies (`quotExt`, `bagExt` and the lemmas under them) take g as a
+variable G with its bagNil and bagCons rules, and `fromBagW sw` takes the
+swap case as a variable sw. Then `fromBag := fromBagW swapO`, and `bagOrbit
+:= bagOrbitW swapO`, whose type does not name sw. The reason: conversion
+has no fast path (eval.c `conv_loop`, eval.c:3194). It does not test
+pointer equality, and it compares two closures by eta. Two `fromBag`
+values are separate closures, so each comparison unfolds `swapO`, and the
+check did not fit in the arena (`langc: OOM`). With the variables, `langc
+check examples/bagorbit.lang` takes 0.14 s. The example row at the end of
+the file is a DAO program at n0: Member `Pos n0`, Group `Word n0`, act
+`actW n0`, and `orbitRow : Path (Type 0) Orbit (OrbitN n0)` by refl (the
+spliced Orbit converts to `OrbitN n0`). `examples/dao.lang` uses the same
+shape: `orbitExt` takes the set proof `sO` and the second map M as
+variables, and `desc` instantiates them.
+
+Deviations from the S7 builder call (8):
+
+1. EC, PS and OS were predicted `ok` (admissions), but they are code
+   kills. With EC the third case is applied to the elim result
+   (TYPE_NOT_FUNCTION). With PS the program `aggregate` meets REFUSE_NAME
+   (rule R4) at the next site. With OS the prelude meets the wrong
+   `outcomeSet` at `aggregate` (TYPE_MISMATCH).
+2. The HIW site moved from check.c:2865 (the PLAN line) to check.c:3132:
+   B1 and B2 added lines above it.
+3. The EP killer in `examples/dao.lang` is `orbitExt`, not `desc`: `desc`
+   is a path lambda over `orbitExt`, and the path case is in `orbitExt`.
+4. EV is killed by 2 of the 4 eval rows that PLAN names. `swapAt0` and
+   `swapAt1` do not change: at i0 and i1 the swap value is its boundary
+   point before elim reaches it.
+5. `elim-path-case` is PATH_END, not TYPE_MISMATCH: the path end check
+   fires first, and PATH_END is the code of every path end refusal. It is
+   a kit row, and `examples/elim.lang` is a kit example (Nat literals).
+   PLAN said all S7 rows and examples are guest.
+6. The USER fixes in 676c7a8 (on the B1 tree 573f7dec): `apply_known`
+   takes the elim arity from the motive domain, `bare_motive` adds the
+   annotations, and the fixes add fronttool rows. The prelude `gov` gives its proof as
+   the path lambda `fun i => L (quotEq .. i)` (which is `cong L` by
+   definition), not as `cong L ..`.
+7. The prelude is an inline source (`kernel/dao.lang`, front.c:26), spliced
+   by `splice_after` (the general form of `orbit_after_act`) after the
+   last of `orbitProj` and `outcomeSet` (front.c:79-85). `orbitProj`
+   follows `act`, so this is the PLAN position. `kernel_sig` refuses every
+   SIG_DEFINED name (Orbit, orbitProj and the 7 prelude names), so no
+   program declaration reaches the SIG_DEFINED branch of `check_sig`.
+8. B3 part B added 12 lines to `domain/domain.lang` (Pos and Word at lines
+   64 to 75). The records move the FORMERS citations: the equivalences
+   from lines 80 to 142 to lines 92 to 154, and Charter and Ratified from
+   lines 64 to 78 to lines 76 to 90.
+
+S7 adds one binder form (the motive telescope over the indices and the
+value) and no universe. The Prop-like row is `elim-family-prop` (Prop in
+the motive telescope is NAME_UNKNOWN). Elim on a Path stays refused (no
+K), and elim on a formal hcomp stays neutral (O22). O25 does not change:
+the guest proofs do not transport along an index line.
+
+Open items. O26 (S9): member permutation invariance of a menu entry, with
+`Orbit ≃ Bag n` when Group is the member permutation group. O27: the full
+permutation form of Group, `Equiv (Pos n) (Pos n)`, needs each
+permutation split into swaps (decidable equality on Pos n), a later
+slice. The S6 open item (`hiit-wrong-index` has no mutant) is closed by
+HIW.
+
+Builder deaths: none. S7 called no builder (the USER route). The main
+loop did the work by hand in sessions 1 to 10b
+(`orbit-lang-work/S7-HANDOFF.md`): B1 in sessions 2 to 5, B2 in session
+6, B3 part A in sessions 7 and 8, B3 part B in sessions 9 and 9b, the
+mutants in session 10, and this section and the gate in session 10b.

@@ -52,6 +52,21 @@ sort in declaration order), then one case for each constructor of each
 sort (sort by sort, in declaration order), then the value. The sorts share
 the parameter telescope of the scrutinee (F18, F19).
 
+`elim` also takes a domain family with path constructors (F16, USER ruling
+S7). The motive binds the indices and then the value: `P : (n : Size) ->
+Bag A n -> Type 0`. A point case takes the fields and an induction binder
+after each recursive field or path field. A path case is a PathP over the
+motive, and a squash case is a square over the motive. A block sort is
+outside `elim`. The DAO prelude (`Config`, `Constitution`, `Aggregation`,
+`Tally`, `aggregate`, `gov` and `amend`) follows the last of `orbitProj`
+and `outcomeSet`. The program gives the proof slot `def outcomeSet : isSet
+Outcome` after `Outcome`, and the slot `def menu : Outcome ->
+Constitution` after the prelude. A slot at another type, or a program
+definition of a prelude name, gives `REFUSE_SIG`. The domain families
+`Pos : Size -> Type 0` (the positions of a bag) and `Word : Size -> Type
+0` (the words of adjacent swaps) give the guest theorem `bagOrbit : (n :
+Size) -> Equiv (OrbitN n) (Bag Choice n)` (`examples/bagorbit.lang`).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
