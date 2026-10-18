@@ -22,3 +22,6 @@ storage.lang
 trunc.lang
 universes.lang
 words.lang
+equiv.lang
+glue.lang
+univ.lang

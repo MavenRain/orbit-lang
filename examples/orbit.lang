@@ -100,3 +100,14 @@ def agreeOnFlip : Path Choice (agree (orbitProj allB)) (agree (orbitProj allA)) 
 def agreeAll : Choice := agree (orbitProj allA)
 def agreeSplit : Choice := agree (orbitProj split)
 def agreeFlipped : Choice := agree (orbitProj (act (inr unit) split))
+
+-- Univalence on Choice (S5): flip is its own inverse, so isoToEquiv makes it an equivalence, and transport along its ua line reduces to flip.
+def flipEquiv : Equiv Choice Choice := isoToEquiv Choice Choice flip flip flipFlip flipFlip
+def flipPath : Path (Type 0) Choice Choice := ua Choice Choice flipEquiv
+def flipT : Path Choice (transp (fun (i : I) => flipPath @ i) i0 (inl unit)) (inr unit) := refl
+def flipAt : Choice := transp (fun (i : I) => flipPath @ i) i0 (inl unit)
+-- O22: hcomp at a Glue type over Choice is a glue element, so its unglue is an hcomp at Choice, and elim sees the constructor inl first.
+def GChoice : Type 0 := Glue Choice i0 (fun (_ : I) => [ ])
+def gIn : GChoice := glue (fun (_ : I) => [ ]) (inl unit)
+def gElim : Choice := elim (fun (c : Choice) => Choice) (fun (u : Unit) => inr unit) (fun (u : Unit) => inl unit)
+  (unglue (hcomp GChoice i0 (fun (_ : I) => [ ]) gIn))

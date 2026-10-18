@@ -87,7 +87,14 @@ typedef enum {
   OP_INTERVAL, /* the sort I: never a type, only the type of an interval term */
   OP_TRANSP,   /* transp L phi a: L a line (a path value in U), phi a face */
   OP_SYSTEM,   /* a system: key0, branch0, key1, branch1, ...; each branch a PLAM */
-  OP_HCOMP     /* hcomp A phi sys u0: phi a face, sys an OP_SYSTEM value */
+  OP_HCOMP,    /* hcomp A phi sys u0: phi a face, sys an OP_SYSTEM value */
+  OP_FIN,      /* Fin n: the numbers below n; a value is a VAL_NAT literal */
+  OP_FIN_ADD,  /* finAdd n a b: (a + b) mod n */
+  OP_FIN_NEG,  /* finNeg n a: (n - a) mod n */
+  OP_FIN_CASE, /* finAll case: k, body0, ..., body(n-1); body j at the literal j */
+  OP_GLUE,     /* Glue A phi sys: a type; sys as in OP_HCOMP, each branch pack T e */
+  OP_GLUE_ELEM, /* glue: phi, sys, a; sys as in OP_HCOMP, each branch t */
+  OP_UNGLUE    /* unglue: A, phi, sys, g; stuck when no rule applies */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -195,7 +202,17 @@ typedef enum {
   CLOS_LINE_MEET,      /* PLAM: j |-> L (i /\ j); args: L, i */
   /* S4 item 14. */
   CLOS_FOLD_PATH,      /* PLAM: k |-> fold (p @ k) with the cases and RES of F; args: p, a, b (the ends of p), F (a stuck fold); field: the family */
-  CLOS_FOLD_FACE       /* PLAM: k |-> fold (X at the first interval E, the second k) with the cases and RES of F; args: X, E, F (a stuck fold); field: the family */
+  CLOS_FOLD_FACE,      /* PLAM: k |-> fold (X at the first interval E, the second k) with the cases and RES of F; args: X, E, F (a stuck fold); field: the family */
+  /* transp at Glue (S3b). FIELD is the fresh level of the key KEYF. */
+  CLOS_GLUE_BASE,      /* PLAM: r |-> A(r) of the Glue line L; args: L */
+  CLOS_GLUE_T,         /* PLAM: j |-> T(r /\ j) of the branch KEYF; args: L, keyf, r */
+  CLOS_GLUE_FILL,      /* PLAM: r |-> witness (e r) (transpFill T psi u0 r); args: L, keyf, psi, u0 */
+  CLOS_CONTR_AT,       /* PLAM: j |-> c x @ j, c a contraction; args: c, x, center */
+  CLOS_PATH_REV,       /* PLAM: j |-> w @ ~j; args: w, a, b (the ends of w) */
+  CLOS_SYS_UNGLUE,     /* PLAM: j |-> unglue (b j) at the Glue type G; args: b, G */
+  CLOS_GLUE_HFILL,     /* PLAM: j |-> witness e (hfill T psi u u0 j); args: pack T e, psi, u, u0 */
+  CLOS_SYS_RESTRICT,   /* PLAM: j |-> b j restricted to the Glue key K; args: b, K */
+  CLOS_EQUIV_LINE      /* PLAM: j |-> Equiv T (b (~j)) (hcomp in U); args: b, T */
 } ClosTag;
 
 typedef struct Value Value;
@@ -300,7 +317,18 @@ typedef struct {
   int has_state;          /* the program declares the state (slice K3a) */
   uint32_t state_family; /* the state family, when has_state is 1 */
   uint32_t fresh; /* the count of fresh levels for the Kan head test */
+  /* Each Glue that a true key reduced, newest first. transp at Glue reads
+     them to get A, phi and sys at an end. */
+  const struct GlueRec *glue_recs;
 } Machine;
+
+/* One Glue that a true key reduced. OUT is the result, a fresh copy of the
+   branch type T, so that its pointer is unique. RAW is the OP_GLUE value. */
+typedef struct GlueRec {
+  const Value *out;
+  const Value *raw;
+  const struct GlueRec *next;
+} GlueRec;
 
 /* Each function returns NULL (or 0) after a diagnostic. A NULL input gives a
    NULL result, so a caller can test once at the end. */
@@ -343,6 +371,8 @@ const Env *env_push(Machine *m, const Env *env, const Value *value);
 const Value *def_value(Machine *m, uint32_t index);
 const Value *eval_core(Machine *m, const Env *env, const Core *core);
 const Value *apply_value(Machine *m, const Value *fn, const Value *arg);
+/* transp LINE PHI BASE, for JSON rule 1 (S3b). LINE is a path value in U. */
+const Value *val_transp(Machine *m, const Value *line, const Value *phi, const Value *base);
 /* The body of a LAM, PI, SIGMA, PLAM or PATHP value at ARG. */
 const Value *closure_apply(Machine *m, const Value *binder, const Value *arg);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */

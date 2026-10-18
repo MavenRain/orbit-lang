@@ -394,3 +394,148 @@ file change, and the opus fallback died too:
 
 Sessions 2 to 5 (PARTS A to C, the mutant runs, this section and the
 gate) did not call a builder. The main loop did the work by hand.
+
+## S5
+
+Slice S5 (Glue, ua, uaBeta and hcomp at U, the coin-lang merge, PLAN
+section 8) is complete on commit 9e28399 plus the S5 changes. The port
+takes the coin-lang commits 44c917f (Fin and the equivalences), 91d7091
+(Glue, ua and uaBeta) and 34acff5 (hcomp at Glue and at U) in order,
+with `git apply --3way --index`, then by hand. Glue, glue and unglue
+are formers with VIS_GUEST (F17). ua, uaArrow, isContr, fiber, isEquiv,
+Equiv, idEquiv, isoCap, isoPath and isoToEquiv are domain definitions
+(ORIGIN_DOMAIN, domain/domain.lang). Fin, finAdd and finNeg are
+VIS_INTERNAL (O23). The gate `make -B check` is GREEN, exit 0, with the
+clang `-Werror` check (log `orbit-lang-S5-close-gate.log`).
+
+Rulings. The S5 builder call (PLAN section 8, 2026-10-17) gives the
+port order, the guest forms and the refusal rows. O22 holds with hcomp
+at U (PLAN section 9): hcomp at U gives a Glue type, hcomp at a Glue
+type gives a glue element, and unglue of a glue element over a Sum base
+reduces by the hcomp of data, so `blocked` sees a constructor or a
+stuck value before the formal hcomp test of `reduce_elim`. The eval row
+`orbit gElim` pins it. O23: `Fin n` takes `n : Nat` and its elements
+are Nat literals, which guest code cannot write (O3 (a)), so Fin is
+internal and its rows run under `--kit`. FORMERS gives Fin as a kit
+note, not as F18, and SPEC says F1 to F17.
+
+| Count | S4 (9e28399) | S5 | Reason |
+|---|---|---|---|
+| examples | 26 | 29 | `equiv` (Fin and the equivalences), `glue` (Glue, ua and uaBeta), `univ` (hcomp at U), all kit |
+| check refusals | 132 | 147 | B1 3 Fin rows, B2 7 Glue and ua rows, B3 `hcomp-universe` out (hcomp at Type 0 is now a Glue type) and `hcomp-universe-cap`, `hcomp-higher-universe` in, B4 4 rows (`ua-non-equiv` and 3 Prop-like rows) |
+| evals | 65 | 75 | `equiv addMod => 1`, `rot2 => 0`, `glue uaAt9 => 1`, `rotTwice => 2`, `univ transTwo => 0`, `circle loopAt0 => 1`, `loop2At0 => 2`, `trunc truncAt => trunc1 (Fin 3) 1`, `orbit flipAt => inr unit`, `gElim => inr unit` (O22) |
+| lower refusals | 15 | 16 | `glue-word` (REFUSE_LOWER) |
+| build checks | 32 | 33 | one check for each lower refusal (`glue-word`) |
+| path regression rows | 26 | 36 | `test/pathtool.c`: B1 3, B2 4, B3 3 (the hand port of the coin-lang `test/path-regressions.c`) |
+
+The other counts do not change: parse refusals 19, kit-only refusals 22,
+runs 5, run refusals 10, asmtool 8 of 8, builds 3, dispatch 20, evm
+steps 43, precompile steps 18, mock 13 rows, diff 15 rows, emit 24, and
+the review, domain, fuel, output, lower and hashing regressions.
+
+Rows per mode. The Fin rows, the Glue rows on `Fin 3` and the examples
+`equiv`, `glue` and `univ` use Nat literals, so they are kit rows. The
+guest rows use no kit name and no literal. The lower rows run under
+`--kit` (S3 deviation 7).
+
+| Gate | Kit rows | Guest rows |
+|---|---|---|
+| examples (`examples/kit.txt`) | 27 | 2 (`signature`, `orbit`) |
+| check refusals (`test/check/kit.txt`) | 89 | 58 (52 S4 rows and 6 S5 rows) |
+| parse refusals (`test/parse/kit.txt`) | 17 | 2 |
+| evals | 69 | 6 (`signature flipped` and the 5 `orbit` rows) |
+| lower refusals | 16 | none |
+
+S5 rows. The Mutant column names the S5 mutant that admits the row. An
+older site has no S5 mutant.
+
+| Row | Code | Mode | Form | Mutant |
+|---|---|---|---|---|
+| `fin-range` | FIN_RANGE | kit | the literal 3 as a value of `Fin 3` | M1 |
+| `fin-all-case` | FIN_CASE | kit | a function on `Fin 3` whose case 1 fails (PATH_END) | M2 |
+| `fin-case-stuck` | FIN_CASE | kit | a function on `Fin 2` whose case 1 fails (PATH_END) | M2 |
+| `glue-equiv` | GLUE_EQUIV | kit | a Glue branch for `~i` whose `e` is not an `Equiv T (Fin 3)` | M5 (a diagnostic kill) |
+| `glue-cover` | SYSTEM_COVER | kit | a Glue system whose keys join to `i`, not `i \/ ~i` | none (M3 SURVIVED) |
+| `glue-boundary` | GLUE_BOUNDARY | kit | glue where unglue of the branch for `~i` is 0 and the base is 1 | M6 |
+| `unglue-type` | UNGLUE_TYPE | kit | unglue of a term of type Nat | M7 |
+| `glue-binder` | GLUE_BINDER | kit | a Glue tube binder `j` that a branch uses | M4 |
+| `ua-not-refl` | PATH_UIP | kit | refl between `ua e` and refl (a path of paths) | older site |
+| `ua-beta-neutral` | PATH_END | guest | uaBeta on a neutral equivalence: transp along `ua e` stays an hcomp, not `(witness e) x` | older site |
+| `hcomp-universe-cap` | HCOMP_CAP | kit | hcomp at Type 0 with the base Nat and the branch for `~j` Fin 3 at i0 | older site |
+| `hcomp-higher-universe` | HCOMP_UNIVERSE | guest | hcomp at Type 1 | M8 |
+| `ua-non-equiv` | TYPE_MISMATCH | guest | ua of a function, not of an equivalence | older site |
+| `glue-prop` | NAME_UNKNOWN | guest | a Glue at `Prop` (no sort Prop, R11) | older site |
+| `isequiv-two-proofs` | PATH_END | guest | refl between two isEquiv proofs `p` and `q` of one map | older site |
+| `ua-two-proofs` | PATH_UIP | guest | refl between the ua of one map with two equivalence proofs | older site |
+| `glue-word` (lower) | REFUSE_LOWER | kit build | `glueWord`: hcomp at a word position (K4c) | none (no new lower.c site) |
+
+Mutants, one at a time (runner `orbit-lang-work/S5-mutants.sh`, log
+`orbit-lang-work/S5-mutants.log`). `row()`, `mut()`, `admit()` and
+`lowadmit()` are the S4 helpers verbatim, and `krow()`, `kadmit()` and
+`erow()` are new (kit rows and eval rows). A pristine pass comes first.
+After the loop, `src/front/check.c` equals every save and
+`src/front/eval.c` equals the M9 save (cmp), and `make -B check` is
+GREEN (log `orbit-lang-S5-mutants-gate.log`).
+
+| Mutant | Edit | Killer | Verdict |
+|---|---|---|---|
+| M1 FIN_RANGE admits | check.c `elab_inner` TERM_NAT: `if (0 * (t->nat >= hint->args[0]->nat))` | `fin-range`: got `ok` | KILLED |
+| M2 FIN_CASE takes case 0 | check.c `finAll`: a failed case `j` takes the core of case 0 (`args[j + 1u] = args[1u];`) | `fin-all-case`, `fin-case-stuck`: got `ok` | KILLED |
+| M3 SYSTEM_COVER admits | check.c, the Glue cover test: `if (0 * !conv_values(c->m, c->level, join, pf))` | GAP `glue-cover` (PATH_END: at i0 the type `Glue (Fin 3) i1 [ ]` is not Fin 3, as S4 N1) | SURVIVED |
+| M4 GLUE_BINDER admits | check.c `glue_tube`: `if (0 * (tube->name != NULL) && strcmp(tube->name, "_") != 0)` | `glue-binder`: got `ok` | KILLED |
+| M5 GLUE_EQUIV keeps the inner failure | check.c `glue_branch`: `if (1 \|\| kept_failure(code))` | `glue-equiv`: want GLUE_EQUIV, got TYPE_MISMATCH (a diagnostic kill, as S4 G0) | KILLED |
+| M6 GLUE_BOUNDARY admits | check.c `glue_boundary`: `if (0 * !conv_values(c->m, c->level, vu, va))` | `glue-boundary`: got `ok` | KILLED |
+| M7 UNGLUE_TYPE admits | check.c `rule_unglue`: unglue of a term of another type is the term (`{ k->type = gt; return g; }`) | `unglue-type`: got `ok` | KILLED |
+| M8 HCOMP_UNIVERSE at n > 1 | check.c `rule_hcomp`: `av->nat != 0u` becomes `av->nat > 1u` | `hcomp-higher-universe`: got `ok` | KILLED |
+| M9 glue_at fallback reverts | eval.c `glue_at`: `return internal(m, "a line that changes its type former");` | `circle loopAt0`, `loop2At0`: INTERNAL, not 1 and 2 | KILLED |
+
+Score: 8 of 9 mutants killed, 7 admissions, one diagnostic kill (M5)
+and two eval differences (M9). M3 meets a second refusal class: with
+the cover test gone, `glue-cover` refuses with PATH_END at i0. M5 has no
+simple admission: each change that admits the branch leaves no valid
+branch core, so the kill is the changed code. Open item M3b (for the
+USER): a cover row with no path end, for example a Glue type at a
+neutral `i` in a def of type Type 0. S5 does not add it.
+
+Deviations from the S5 builder call (8):
+
+1. The port uses `git apply --3way --index` and hand ports, not
+   `cherry-pick -n`. orbit-lang had no coin-lang objects, so session 2
+   ran `git -C ~/Documents/orbit-lang fetch --no-tags
+   ~/Documents/coin-lang HEAD` (objects and FETCH_HEAD only, no ref).
+2. Not ported: the src/json.c hunks, test/json (`equiv.json`,
+   `glue.json`, `univ.json`), the test/emit rows `fin-case-term` and
+   `fin-case-type` and the `json_contains` rows. orbit-lang has no JSON
+   or emit front for them.
+3. Not ported: the coin-lang Makefile hunk (it links $(TARGET) into
+   build/path-regressions, a target that orbit-lang does not have) and
+   the coin-lang docs (PLAN, STATUS, host README).
+4. test/path-regressions.c goes by hand into test/pathtool.c
+   (`print_refused`, `accepts` and `system_conversion` with the prelude
+   argument, the static EQUIV prelude, 10 rows).
+5. `ua-two-proofs` gives PATH_UIP (a path of paths), not the PATH_END
+   of the builder call. The refusal is correct.
+6. A kernel fix that is not in the three commits: `loopT` gave INTERNAL
+   at eval.c `glue_at`, because in orbit-lang `loop i0` reduces to
+   `base` before the fold, so the end of `code2` has no GlueRec. The fix
+   comes from coin-lang 8c79e9a (S4a): `ival_subst` splits into
+   `ival_replace` and `face_norm`, `env_isubst` and `val_isubst` are new
+   (with `case VAL_WORD:`), and `glue_at` falls back to the line at a
+   fresh variable. The new code runs only where `glue_at` returned
+   INTERNAL. M9 pins it.
+7. B5: Fin is a kit note in FORMERS, not F18 (VIS_INTERNAL, O23), so
+   SPEC says F1 to F17. formers/tcc-evm-contract.md also names F17, and
+   its stale lower row count 13 is now 16.
+8. The row `hcomp-universe` goes out of the check rows and kit.txt (B3,
+   as the builder call says), and `hcomp-universe-cap` keeps a HCOMP_CAP
+   row at Type 0.
+
+S5 adds one binder form (the Glue tube `fun (_ : I) =>`, which no
+branch can use) and no universe. The Prop-like rows are `glue-prop` (a
+Glue at Prop), `isequiv-two-proofs` and `ua-two-proofs` (no proof
+irrelevance for isContr or isEquiv).
+
+Builder deaths: none. S5 called no builder (the USER route of S2 to
+S4). The main loop did the work by hand: B1 to B5 in sessions 3 to 5,
+the mutant run in session 5, and this section and the gate in session
+6.

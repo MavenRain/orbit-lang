@@ -30,7 +30,9 @@ static const char *const OP_NAMES[] = {
   [OP_ADDR_EQ] = "addrEq", [OP_PROJ] = "?", [OP_KMAP] = "Map", [OP_KMAP_OF] = "mapOf",
   [OP_KMAP_GET] = "mapGet", [OP_KMAP_SET] = "mapSet",
   [OP_INTERVAL] = "I", [OP_TRANSP] = "transp",
-  [OP_SYSTEM] = "system", [OP_HCOMP] = "hcomp"
+  [OP_SYSTEM] = "system", [OP_HCOMP] = "hcomp", [OP_FIN] = "Fin",
+  [OP_FIN_ADD] = "finAdd", [OP_FIN_NEG] = "finNeg", [OP_FIN_CASE] = "finCase",
+  [OP_GLUE] = "Glue", [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -52,7 +54,9 @@ static const unsigned char OP_ARITY[] = {
   [OP_EC_ADD] = 2, [OP_EC_MUL] = 2, [OP_EC_PAIRING] = 1, [OP_ADDR_TO_U256] = 1,
   [OP_PROJ] = 1, [OP_KMAP] = 2, [OP_KMAP_OF] = VARIES, [OP_KMAP_GET] = 3, [OP_KMAP_SET] = 4,
   [OP_INTERVAL] = 0, [OP_TRANSP] = 3,
-  [OP_SYSTEM] = VARIES, [OP_HCOMP] = 4
+  [OP_SYSTEM] = VARIES, [OP_HCOMP] = 4, [OP_FIN] = 1, [OP_FIN_ADD] = 3,
+  [OP_FIN_NEG] = 2, [OP_FIN_CASE] = VARIES, [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
+  [OP_UNGLUE] = 4
 };
 
 typedef enum {
@@ -343,6 +347,12 @@ const Value *face_join(Machine *m, const Value *a, const Value *b) {
 
 const Value *face_meet(Machine *m, const Value *a, const Value *b) {
   return face_norm(m, ival_meet(m, a, b));
+}
+
+static int face_implies(Machine *m, const Value *a, const Value *b) {
+  const Value *face = face_norm(m, a);
+  const Value *meet = face == NULL ? NULL : face_meet(m, face, b);
+  return face != NULL && meet != NULL && ival_equal(face, meet);
 }
 
 const Value *ival_face(Machine *m, const Value *r, uint32_t level, int side) {
@@ -1245,6 +1255,53 @@ static const Value *opaque(Machine *m, Op op, const Value *const *a, uint32_t n)
   return val_op(m, VAL_STUCK, op, 0, 0, a, n);
 }
 
+/* finAdd n a b: (a + b) mod n, with no overflow. A[0] is n. */
+static const Value *fin_add(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  uint64_t k = 0;
+  uint64_t x = 0;
+  uint64_t y = 0;
+  if (!nat_args(m, OP_FIN_ADD, a, n, &k, &x, &out))
+    return out;
+  if (a[2]->kind == VAL_TRAP)
+    return a[2];
+  if (blocked(m, a[2], OP_FIN_ADD, 0, 0, a, n, &out))
+    return out;
+  if (a[2]->kind != VAL_NAT)
+    return internal(m, "a Fin operation on a value that is not a number");
+  y = a[2]->nat;
+  if (k == 0)
+    return internal(m, "a Fin 0 operation");
+  x %= k;
+  y %= k;
+  return val_nat(m, x >= k - y ? x - (k - y) : x + y);
+}
+
+/* finNeg n a: (n - a) mod n. A[0] is n. */
+static const Value *fin_neg(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  uint64_t k = 0;
+  uint64_t x = 0;
+  if (!nat_args(m, OP_FIN_NEG, a, n, &k, &x, &out))
+    return out;
+  if (k == 0)
+    return internal(m, "a Fin 0 operation");
+  x %= k;
+  return val_nat(m, x == 0 ? 0 : k - x);
+}
+
+/* The finAll case term: k, body0, ..., body(n-1). Body j at the literal j;
+   a neutral k keeps the full argument list. At a literal, eval_op evals
+   only the body of that literal, so a literal seldom gets here. */
+static const Value *fin_case(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  if (blocked(m, a[0], OP_FIN_CASE, 0, 0, a, n, &out))
+    return out;
+  if (a[0]->kind != VAL_NAT || a[0]->nat >= n - 1u)
+    return internal(m, "a Fin case on a value out of range");
+  return a[a[0]->nat + 1u];
+}
+
 static const Value *nat_test(Machine *m, Op op, const Value *const *a, uint32_t n) {
   const Value *out;
   uint64_t x = 0;
@@ -1375,6 +1432,8 @@ static int arity_ok(const Machine *m, Op op, uint32_t inst, uint32_t n) {
     return n % 2u == 0u;
   if (op == OP_SYSTEM)
     return n % 2u == 0u;
+  if (op == OP_FIN_CASE)
+    return n >= 2u;
   if (OP_ARITY[op] != VARIES)
     return n == (uint32_t)OP_ARITY[op];
   return n == varied_arity(m, op, inst);
@@ -1441,14 +1500,20 @@ static const Value *kan_closure(Machine *m, ValKind kind, ClosTag tag, uint32_t 
 
 static const Value *transp(Machine *m, const Value *line, const Value *phi, const Value *base);
 static const Value *hcomp(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base);
-/* Structural rules that reach a universe retain the outer operation:
-   composing in the universe needs Glue, and surface hcomp refuses it. */
 static const Value *hcomp_stuck(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base);
 static const Value *comp(Machine *m, const Value *line, const Value *phi, const Value *sys, const Value *base);
 static const Value *hfill(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base, const Value *r);
 static const Value *sys_map(Machine *m, const Value *sys, ClosTag tag, uint32_t field, uint32_t extra, const Value *x, const Value *y, const Value *z);
 static const Value *hcomp_pathp_at(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base, const Value *j);
 static const Value *transp_pathp_at(Machine *m, const Value *line, const Value *phi, const Value *base, const Value *r);
+static const Value *glue_at(Machine *m, const Value *line, const Value *r);
+static const Value *glue_branch_at(Machine *m, const Value *line, const Value *keyf, uint32_t level, const Value *s);
+static const Value *transp_glue(Machine *m, const Value *line, const Value *psi, const Value *u0);
+static const Value *unglue_value(Machine *m, const Value *ty, const Value *g);
+static const Value *glue_restrict(Machine *m, const Value *x, const Value *key);
+static const Value *hcomp_glue(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base);
+static const Value *hcomp_univ(Machine *m, const Value *phi, const Value *sys, const Value *base);
+static const Value *domain_def(Machine *m, const char *name);
 
 /* The part FIELD (0: witness, 1: payload) of the Sigma value U. */
 static const Value *sigma_part(Machine *m, const Value *u, uint32_t field) {
@@ -1612,6 +1677,26 @@ static const Value *kan_apply(Machine *m, const Value *k, const Value *r) {
     if (a[2]->argc < 2u)
       return internal(m, "a folded face without its cases");
     return fold_family(m, k->field, a[2]->args, a[2]->argc - 2u, ctor_at2(m, a[0], a[1], r));
+  case CLOS_GLUE_BASE:
+    t = glue_at(m, a[0], r);
+    return t == NULL ? NULL : t->args[0];
+  case CLOS_GLUE_T:
+    return sigma_part(m, glue_branch_at(m, a[0], a[1], k->field, ival_meet(m, a[2], r)), 0);
+  case CLOS_GLUE_FILL:
+    t = sigma_part(m, sigma_part(m, glue_branch_at(m, a[0], a[1], k->field, r), 1), 0);
+    return apply_value(m, t, transp(m, kan_closure(m, VAL_PLAM, CLOS_GLUE_T, k->field, 3, a[0], a[1], r), ival_join(m, a[2], ival_neg(m, r)), a[3]));
+  case CLOS_CONTR_AT:
+    return path_apply(m, apply_value(m, a[0], a[1]), r, a[2], a[1]);
+  case CLOS_PATH_REV:
+    return path_apply(m, a[0], ival_neg(m, r), a[1], a[2]);
+  case CLOS_SYS_UNGLUE:
+    return unglue_value(m, a[1], closure_apply(m, a[0], r));
+  case CLOS_GLUE_HFILL:
+    return apply_value(m, sigma_part(m, sigma_part(m, a[0], 1), 0), hfill(m, sigma_part(m, a[0], 0), a[1], a[2], a[3], r));
+  case CLOS_SYS_RESTRICT:
+    return glue_restrict(m, closure_apply(m, a[0], r), a[1]);
+  case CLOS_EQUIV_LINE:
+    return apply_value(m, apply_value(m, domain_def(m, "Equiv"), a[1]), closure_apply(m, a[0], ival_neg(m, r)));
   case CLOS_CORE:
     break;
   }
@@ -1727,6 +1812,7 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   int neutral = scrut_of(base) == SCRUT_NEUTRAL;
   switch (head->op) {
   case OP_NAT: /* R27: a base former has no path structure */
+  case OP_FIN:
   case OP_FLAG:
   case OP_UNIT:
   case OP_U256:
@@ -1766,6 +1852,8 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
     if (neutral)
       break;
     return transp_family(m, line, phi, base);
+  case OP_GLUE:
+    return transp_glue(m, line, phi, base);
   case OP_INTERVAL:
   case OP_UNIT_VAL:
   case OP_FLAG_YES:
@@ -1820,6 +1908,11 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_TRANSP:
   case OP_SYSTEM:
   case OP_HCOMP:
+  case OP_FIN_ADD:
+  case OP_FIN_NEG:
+  case OP_FIN_CASE:
+  case OP_GLUE_ELEM:
+  case OP_UNGLUE:
     return internal(m, "a transport along a line that is not a type");
   }
   return transp_stuck(m, line, phi, base);
@@ -1879,6 +1972,10 @@ static const Value *transp(Machine *m, const Value *line, const Value *phi, cons
   }
   /* Rule 9: a neutral line. */
   return transp_stuck(m, line, face, base);
+}
+
+const Value *val_transp(Machine *m, const Value *line, const Value *phi, const Value *base) {
+  return transp(m, line, phi, base);
 }
 
 /* hcomp, comp and hfill (S2b, S2 kickoff section 1.3). A system is a
@@ -2150,7 +2247,9 @@ static const Value *hcomp(Machine *m, const Value *ty, const Value *phi, const V
     return NULL;
   if (base->kind == VAL_TRAP)
     return base;
-  if (ival_is_end(face, 1))
+  /* In U a true key goes to hcomp_univ, so that its Glue makes the record
+     that transp at Glue reads at an end. */
+  if (ival_is_end(face, 1) && ty->kind != VAL_UNIV)
     return hcomp_true(m, ty, face, sys, base);
   switch (ty->kind) {
   case VAL_PI:
@@ -2160,7 +2259,11 @@ static const Value *hcomp(Machine *m, const Value *ty, const Value *phi, const V
   case VAL_PATHP:
     return kan_closure4(m, VAL_PLAM, CLOS_HCOMP_PATHP, 0, 4, ty, face, sys, base);
   case VAL_OP:
+    if (val_is(ty, OP_GLUE) && ty->argc == 3u)
+      return hcomp_glue(m, ty, face, sys, base);
     return hcomp_data(m, ty, face, sys, base);
+  case VAL_UNIV:
+    return hcomp_univ(m, face, sys, base);
   case VAL_TRAP:
     return ty;
   case VAL_NAT:
@@ -2169,7 +2272,6 @@ static const Value *hcomp(Machine *m, const Value *ty, const Value *phi, const V
   case VAL_PLAM:
   case VAL_IVAL:
     return internal(m, "an hcomp in a value that is not a type");
-  case VAL_UNIV:
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
@@ -2206,11 +2308,486 @@ const Value *val_ctor(Machine *m, uint32_t inst, const Value *const *a, uint32_t
   return reduce_ctor(m, inst, 0, a, n);
 }
 
+/* Glue (S3b, S3 kickoff section 1.3). SYS is an OP_SYSTEM value as hcomp
+   stores it. A Glue branch does not use its tube variable, so the branch
+   at i1 is the branch at any point. */
+
+/* The Glue operation OP over the N arguments A, with the face at index PHI
+   normalized, as hcomp stores its face. */
+static const Value *glue_op(Machine *m, ValKind kind, Op op, const Value *const *a, uint32_t n, uint32_t phi) {
+  const Value *args[4];
+  uint32_t i;
+  for (i = 0; i < n && i < 4u; i++)
+    args[i] = i == phi ? face_norm(m, a[i]) : a[i];
+  return val_op(m, kind, op, 0, 0, args, i);
+}
+
+/* The branch of SYS under its first true key, at i1, in *OUT. 0 when no
+   key is true. */
+static int glue_true(Machine *m, const Value *sys, const Value **out) {
+  uint32_t k = true_branch(m, sys);
+  if (k >= sys->argc)
+    return 0;
+  *out = line_at(m, sys->args[k], val_iend(m, 1));
+  return 1;
+}
+
+/* Glue A phi sys: a true key gives T, the witness of its branch pack T e.
+   Else Glue is a type. */
+static const Value *reduce_glue(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *branch = NULL;
+  const Value *t;
+  const Value *raw;
+  Value *out;
+  GlueRec *rec;
+  if (!glue_true(m, a[2], &branch))
+    return glue_op(m, VAL_OP, OP_GLUE, a, n, 1);
+  /* Record after the branch eval, so a nested Glue does not win. The
+     result is a fresh copy of T: glue_at finds a record by pointer, and a
+     cached T can be the result of two Glue values. */
+  t = sigma_part(m, branch, 0);
+  raw = glue_op(m, VAL_OP, OP_GLUE, a, n, 1);
+  if (t == NULL)
+    return NULL;
+  out = arena_alloc(m->arena, sizeof *out);
+  rec = arena_alloc(m->arena, sizeof *rec);
+  if (out == NULL || rec == NULL)
+    return oom(m);
+  *out = *t;
+  rec->out = out;
+  rec->raw = raw;
+  rec->next = m->glue_recs;
+  m->glue_recs = rec;
+  return out;
+}
+
+/* glue sys a (args phi, sys, a): a true key gives t, its branch. Else glue
+   is canonical. */
+static const Value *reduce_glue_elem(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *branch = NULL;
+  return glue_true(m, a[1], &branch) ? branch : glue_op(m, VAL_OP, OP_GLUE_ELEM, a, n, 0);
+}
+
+/* unglue A phi sys g. A trap g gives the trap. A true key gives witness e
+   g, with e the payload of its branch pack T e. Test this first: its
+   branch type may itself be Glue, with a glue constructor for g. Else
+   unglue (glue sys a) is a, and a neutral g leaves unglue stuck. */
+static const Value *reduce_unglue(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *branch = NULL;
+  if (a[3]->kind == VAL_TRAP)
+    return a[3];
+  if (glue_true(m, a[2], &branch))
+    return apply_value(m, sigma_part(m, sigma_part(m, branch, 1), 0), a[3]);
+  if (val_is(a[3], OP_GLUE_ELEM) && a[3]->argc == 3u)
+    return a[3]->args[2];
+  return glue_op(m, VAL_STUCK, OP_UNGLUE, a, n, 1);
+}
+
+/* unglue G at the Glue type TY (args A, phi, sys), or NULL for a NULL G. */
+static const Value *unglue_value(Machine *m, const Value *ty, const Value *g) {
+  const Value *ua[4];
+  if (g == NULL)
+    return NULL;
+  ua[0] = ty->args[0];
+  ua[1] = ty->args[1];
+  ua[2] = ty->args[2];
+  ua[3] = g;
+  return reduce_unglue(m, ua, 4);
+}
+
+/* X restricted to the Glue key KEY. For a glue element X (args phi, sys,
+   a), this is the branch at i1 of a system key implied by KEY.
+   Else X. There is no value-level face substitution: under KEY, u0 and
+   the tubes of hcomp at Glue are glue elements, not T elements. */
+static const Value *glue_restrict(Machine *m, const Value *x, const Value *key) {
+  const Value *sys;
+  uint32_t k;
+  if (x == NULL || !val_is(x, OP_GLUE_ELEM) || x->argc != 3u)
+    return x;
+  sys = x->args[1];
+  for (k = 0; k + 1u < sys->argc; k += 2u)
+    if (face_implies(m, key, sys->args[k]))
+      return line_at(m, sys->args[k + 1u], val_iend(m, 1));
+  return x;
+}
+
+/* hcomp at Glue A phi sys (S3c item 11, CCHM): glue [phi_k -> hcomp T_k
+   psi u u0] a1, with a1 = hcomp A (psi \/ phi) [psi -> unglue (u j), phi_k
+   -> witness e_k (hfill T_k psi u u0 j)] (unglue u0). One branch for each
+   key phi_k of the Glue system, as transp_glue. u and u0 are restricted
+   to phi_k (glue_restrict) in the T_k parts. */
+static const Value *hcomp_glue(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base) {
+  const Value *gs = ty->args[2];
+  const Value *sys_a = sys_map(m, sys, CLOS_SYS_UNGLUE, 0, 1, ty, NULL, NULL);
+  const Value **sg;
+  const Value *pack;
+  const Value *sys_k;
+  const Value *base_k;
+  const Value *ga[3];
+  uint32_t k;
+  sg = arena_alloc(m->arena, ((size_t)gs->argc + 1u) * sizeof *sg);
+  if (sg == NULL)
+    return oom(m);
+  for (k = 0; k + 1u < gs->argc; k += 2u) {
+    pack = line_at(m, gs->args[k + 1u], val_iend(m, 1));
+    sys_k = sys_map(m, sys, CLOS_SYS_RESTRICT, 0, 1, gs->args[k], NULL, NULL);
+    base_k = glue_restrict(m, base, gs->args[k]);
+    if (sys_k == NULL)
+      return NULL;
+    sys_a = sys_add(m, sys_a, gs->args[k], kan_closure4(m, VAL_PLAM, CLOS_GLUE_HFILL, 0, 4, pack, phi, sys_k, base_k));
+    sg[k] = gs->args[k];
+    sg[k + 1u] = constant_line(m, hcomp(m, sigma_part(m, pack, 0), phi, sys_k, base_k));
+    if (sg[k + 1u] == NULL || sys_a == NULL)
+      return NULL;
+  }
+  ga[0] = ty->args[1];
+  ga[1] = system_value(m, sg, gs->argc);
+  ga[2] = hcomp(m, ty->args[0], face_join(m, phi, ty->args[1]), sys_a, unglue_value(m, ty, base));
+  if (ga[1] == NULL || ga[2] == NULL)
+    return NULL;
+  return reduce_glue_elem(m, ga, 3);
+}
+
+/* transp at Glue (S3b item 8, CCHM as cubicaltt compGlue). */
+
+/* forall i. PHI, with i the variable at LEVEL: the conjunctions of the
+   face PHI that have no literal of LEVEL. */
+static const Value *ival_forall(Machine *m, const Value *phi, uint32_t level) {
+  IConj *cs;
+  uint32_t i;
+  uint32_t j;
+  uint32_t k = 0;
+  int has;
+  if (phi == NULL)
+    return NULL;
+  cs = arena_alloc(m->arena, ((size_t)phi->conj_count + 1u) * sizeof *cs);
+  if (cs == NULL)
+    return oom(m);
+  for (i = 0; i < phi->conj_count; i++) {
+    has = 0;
+    for (j = 0; j < phi->conj[i].count; j++)
+      has = has || (phi->conj[i].lits[j] >> 1u) == level;
+    if (!has)
+      cs[k++] = phi->conj[i];
+  }
+  return face_norm(m, ival_make(m, cs, k));
+}
+
+/* The interval term PHI with S in place of the variable at LEVEL. */
+static const Value *ival_replace(Machine *m, const Value *phi, uint32_t level, const Value *s) {
+  const Value *out = val_iend(m, 0);
+  const Value *ns = ival_neg(m, s);
+  const Value *t;
+  uint32_t i;
+  uint32_t j;
+  uint32_t x;
+  if (phi == NULL || ns == NULL)
+    return NULL;
+  for (i = 0; i < phi->conj_count && out != NULL; i++) {
+    t = val_iend(m, 1);
+    for (j = 0; j < phi->conj[i].count; j++) {
+      x = phi->conj[i].lits[j];
+      t = ival_meet(m, t, (x >> 1u) != level ? ival_lit(m, x) : (x & 1u) != 0 ? ns : s);
+    }
+    out = ival_join(m, out, t);
+  }
+  return out;
+}
+
+/* Substitution in a face also removes inconsistent conjunctions. */
+static const Value *ival_subst(Machine *m, const Value *phi, uint32_t level, const Value *s) {
+  return face_norm(m, ival_replace(m, phi, level, s));
+}
+
+static const Value *val_isubst(Machine *m, const Value *v, uint32_t level, const Value *s);
+
+/* ENV with val_isubst on each value, in *OUT. Returns 0 on an error. */
+static int env_isubst(Machine *m, const Env *env, uint32_t level, const Value *s, const Env **out) {
+  const Value **vals;
+  const Env *e;
+  uint32_t n = 0;
+  uint32_t i;
+  for (e = env; e != NULL; e = e->next)
+    n++;
+  vals = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *vals);
+  if (vals == NULL) {
+    oom(m);
+    return 0;
+  }
+  for (e = env, i = 0; e != NULL; e = e->next, i++) {
+    vals[i] = val_isubst(m, e->value, level, s);
+    if (vals[i] == NULL)
+      return 0;
+  }
+  *out = NULL;
+  for (i = n; i > 0; i--) {
+    *out = env_push(m, *out, vals[i - 1u]);
+    if (*out == NULL)
+      return 0;
+  }
+  return 1;
+}
+
+/* V with S for the interval variable at LEVEL in each interval value,
+   argument and closure env (glue_at, S4a). Nothing reduces: a system only
+   drops its false keys. A NULL part (a PAPP end) stays NULL. */
+static const Value *val_isubst(Machine *m, const Value *v, uint32_t level, const Value *s) {
+  const Value **args;
+  const Value *r = v;
+  Value *out;
+  uint32_t i;
+  if (v == NULL || !spend(m, 1) || !enter(m))
+    return NULL;
+  switch (v->kind) {
+  case VAL_IVAL:
+    r = ival_replace(m, v, level, s);
+    break;
+  case VAL_UNIV:
+  case VAL_NAT:
+  case VAL_WORD:
+  case VAL_VAR:
+  case VAL_TRAP:
+    break;
+  case VAL_OP:
+  case VAL_STUCK:
+  case VAL_LAM:
+  case VAL_PLAM:
+  case VAL_PI:
+  case VAL_SIGMA:
+  case VAL_PATHP:
+  case VAL_APP:
+  case VAL_PAPP:
+    args = arena_alloc(m->arena, ((size_t)v->argc + 1u) * sizeof *args);
+    out = arena_alloc(m->arena, sizeof *out);
+    if (args == NULL || out == NULL) {
+      m->depth--;
+      return oom(m);
+    }
+    *out = *v;
+    out->args = args;
+    r = out;
+    for (i = 0; i < v->argc && r != NULL; i++) {
+      args[i] = v->args[i] == NULL ? NULL : val_isubst(m, v->args[i], level, s);
+      r = v->args[i] != NULL && args[i] == NULL ? NULL : r;
+    }
+    out->dom = r == NULL || v->dom == NULL ? v->dom : val_isubst(m, v->dom, level, s);
+    out->arg = r == NULL || v->arg == NULL ? v->arg : val_isubst(m, v->arg, level, s);
+    r = (v->dom != NULL && out->dom == NULL) || (v->arg != NULL && out->arg == NULL) ? NULL : r;
+    if (r != NULL && v->env != NULL && !env_isubst(m, v->env, level, s, &out->env))
+      r = NULL;
+    if (r != NULL && v->kind == VAL_OP && v->op == OP_SYSTEM)
+      r = system_value(m, args, v->argc);
+    break;
+  }
+  m->depth--;
+  return r;
+}
+
+
+/* The OP_GLUE value of the Glue line L at R. A true key reduces Glue to T,
+   so then the record that reduce_glue makes gives A, phi and sys. */
+static const Value *glue_at(Machine *m, const Value *line, const Value *r) {
+  const GlueRec *h0 = m->glue_recs;
+  const GlueRec *rec;
+  const Value *t;
+  const Value *fv;
+  t = line_at(m, line, r);
+  if (t == NULL)
+    return NULL;
+  /* Only the records of this evaluation, newest first. A reduced branch
+     type can itself be Glue: the newest record for T is the outermost
+     Glue that reduced to T, and it takes priority over the Glue metadata
+     of T. A nested glue_at adds records but does not remove them. */
+  for (rec = m->glue_recs; rec != NULL && rec != h0; rec = rec->next)
+    if (rec->out == t && rec->raw != NULL)
+      return rec->raw;
+  if (val_is(t, OP_GLUE) && t->argc == 3u)
+    return t;
+  fv = fresh_ivar(m);
+  t = fv == NULL ? NULL : line_at(m, line, fv);
+  if (t == NULL)
+    return NULL;
+  if (!val_is(t, OP_GLUE) || t->argc != 3u)
+    return internal(m, "a line that changes its type former");
+  return val_isubst(m, t, fv->conj[0].lits[0] >> 1u, r);
+}
+
+/* The branch pack T e of the Glue line L at S whose key is KEYF at S. KEYF
+   is a key at the fresh LEVEL. The system drops a false key, so a branch
+   is found by its key, not by its index. */
+static const Value *glue_branch_at(Machine *m, const Value *line, const Value *keyf, uint32_t level, const Value *s) {
+  const Value *g = glue_at(m, line, s);
+  const Value *want = ival_subst(m, keyf, level, s);
+  const Value *sys;
+  uint32_t k;
+  if (g == NULL || want == NULL)
+    return NULL;
+  sys = g->args[2];
+  for (k = 0; k + 1u < sys->argc; k += 2u)
+    if (ival_equal(sys->args[k], want))
+      return line_at(m, sys->args[k + 1u], val_iend(m, 1));
+  return internal(m, "a Glue branch that changes its face");
+}
+
+/* The value of the domain library def NAME (the global lookup of R3 (a)). */
+static const Value *domain_def(Machine *m, const char *name) {
+  uint32_t i;
+  for (i = 0; i < m->def_count; i++)
+    if (m->defs[i].name != NULL && strcmp(m->defs[i].name, name) == 0)
+      return def_value(m, i);
+  return internal(m, "a Kan rule that needs a domain library def that is not there");
+}
+
+/* fiber T A f y of the domain library. */
+static const Value *fiber_type(Machine *m, const Value *t, const Value *a, const Value *f, const Value *y) {
+  return apply_value(m, apply_value(m, apply_value(m, apply_value(m, domain_def(m, "fiber"), t), a), f), y);
+}
+
+/* hcomp in the universe (S3c item 12, CCHM): hcomp (Type 0) psi [k -> A j]
+   A0 = Glue A0 psi [k -> pack (A i1) e], with e = lineToEquiv (fun j => A
+   (~j)) = transp (fun j => Equiv (A i1) (A (~j))) i0 (idEquiv (A i1)). A
+   key that is i0 has no branch. */
+static const Value *hcomp_univ(Machine *m, const Value *phi, const Value *sys, const Value *base) {
+  const Value **sg;
+  const Value *t1;
+  const Value *e;
+  const Value *ga[3];
+  uint32_t k;
+  uint32_t n = 0;
+  sg = arena_alloc(m->arena, ((size_t)sys->argc + 1u) * sizeof *sg);
+  if (sg == NULL)
+    return oom(m);
+  for (k = 0; k + 1u < sys->argc; k += 2u)
+    if (!ival_is_end(face_norm(m, sys->args[k]), 0)) {
+      t1 = closure_apply(m, sys->args[k + 1u], val_iend(m, 1));
+      e = t1 == NULL ? NULL : transp(m, kan_closure(m, VAL_PLAM, CLOS_EQUIV_LINE, 0, 2, sys->args[k + 1u], t1, NULL), val_iend(m, 0), apply_value(m, domain_def(m, "idEquiv"), t1));
+      sg[n] = sys->args[k];
+      sg[n + 1u] = e == NULL ? NULL : constant_line(m, make(m, VAL_OP, OP_PACK, 0, 2, t1, e, NULL));
+      if (sg[n + 1u] == NULL)
+        return NULL;
+      n += 2u;
+    }
+  ga[0] = base;
+  ga[1] = phi;
+  ga[2] = system_value(m, sg, n);
+  if (ga[2] == NULL)
+    return NULL;
+  return reduce_glue(m, ga, 3);
+}
+
+/* transp L psi u0 with L(i) = Glue (A i) (phi i) sys(i). Branch k has the
+   key key_k and delta_k = forall i. key_k. The result is glue [key_l(i1)
+   -> t1_l] a1, with t1_l and w_l from the fiber extension of branch l at
+   i1, and a1 = hcomp (A i1) (phi i1 \/ psi) [key_l(i1) -> w_l @ ~j, psi ->
+   a1'] a1'. */
+static const Value *transp_glue(Machine *m, const Value *line, const Value *psi, const Value *u0) {
+  const Value *fv = fresh_ivar(m);
+  const Value *gf;
+  const Value *g0;
+  const Value *g1;
+  const Value *gs;
+  const Value *s1;
+  const Value **dks;
+  const Value **sg;
+  const Value *ua[4];
+  const Value *ga[3];
+  const Value *empty = val_op(m, VAL_OP, OP_SYSTEM, 0, 0, NULL, 0);
+  const Value *delta = val_iend(m, 0);
+  const Value *a0;
+  const Value *a1p;
+  const Value *a1;
+  const Value *sys_a;
+  const Value *sys_r;
+  const Value *sys_f;
+  const Value *b;
+  const Value *e;
+  const Value *f;
+  const Value *cl;
+  const Value *center;
+  const Value *contr;
+  const Value *refl;
+  const Value *ext;
+  const Value *t1;
+  const Value *fill;
+  const Value *cover;
+  uint32_t level;
+  uint32_t k;
+  uint32_t l;
+  if (fv == NULL || empty == NULL)
+    return NULL;
+  level = fv->conj[0].lits[0] >> 1u;
+  gf = glue_at(m, line, fv);
+  g0 = gf == NULL ? NULL : glue_at(m, line, val_iend(m, 0));
+  g1 = g0 == NULL ? NULL : glue_at(m, line, val_iend(m, 1));
+  if (g1 == NULL)
+    return NULL;
+  gs = gf->args[2];
+  s1 = g1->args[2];
+  dks = arena_alloc(m->arena, ((size_t)gs->argc + 1u) * sizeof *dks);
+  sg = arena_alloc(m->arena, ((size_t)s1->argc + 1u) * sizeof *sg);
+  if (dks == NULL || sg == NULL)
+    return oom(m);
+  /* a0 = unglue u0 at i0. */
+  ua[0] = g0->args[0];
+  ua[1] = g0->args[1];
+  ua[2] = g0->args[2];
+  ua[3] = u0;
+  a0 = reduce_unglue(m, ua, 4);
+  /* a1' = comp A (psi \/ delta) [psi -> a0, delta_k -> witness (e_k i)
+     (fill_k i)] a0. No regularity, so the psi branch stays. Each T fill
+     needs the branch of u0 on delta_k, rather than its glue constructor. */
+  sys_a = sys_add(m, empty, psi, constant_line(m, a0));
+  for (k = 0; k + 1u < gs->argc; k += 2u) {
+    dks[k] = ival_forall(m, gs->args[k], level);
+    if (dks[k] == NULL)
+      return NULL;
+    delta = face_join(m, delta, dks[k]);
+    if (!ival_is_end(dks[k], 0))
+      sys_a = sys_add(m, sys_a, dks[k], kan_closure4(m, VAL_PLAM, CLOS_GLUE_FILL, level, 4, line, gs->args[k], psi, glue_restrict(m, u0, dks[k])));
+  }
+  cover = face_join(m, psi, delta);
+  a1p = comp(m, kan_closure(m, VAL_PLAM, CLOS_GLUE_BASE, 0, 1, line, NULL, NULL), cover, sys_a, a0);
+  if (a1p == NULL || cover == NULL)
+    return NULL;
+  refl = constant_line(m, a1p);
+  /* One fiber extension for each branch l at i1. */
+  sys_r = sys_add(m, empty, psi, refl);
+  for (l = 0; l + 1u < s1->argc; l += 2u) {
+    b = line_at(m, s1->args[l + 1u], val_iend(m, 1));
+    e = sigma_part(m, b, 1);
+    f = sigma_part(m, e, 0);
+    cl = apply_value(m, sigma_part(m, e, 1), a1p);
+    center = sigma_part(m, cl, 0);
+    contr = sigma_part(m, cl, 1);
+    sys_f = sys_add(m, empty, psi, kan_closure(m, VAL_PLAM, CLOS_CONTR_AT, 0, 3, contr, make(m, VAL_OP, OP_PACK, 0, 2, glue_restrict(m, u0, face_meet(m, psi, s1->args[l])), refl, NULL), center));
+    for (k = 0; k + 1u < gs->argc; k += 2u)
+      if (!ival_is_end(dks[k], 0)) {
+        fill = transp(m, kan_closure(m, VAL_PLAM, CLOS_GLUE_T, level, 3, line, gs->args[k], val_iend(m, 1)), psi, glue_restrict(m, u0, dks[k]));
+        sys_f = sys_add(m, sys_f, dks[k], kan_closure(m, VAL_PLAM, CLOS_CONTR_AT, 0, 3, contr, make(m, VAL_OP, OP_PACK, 0, 2, fill, refl, NULL), center));
+      }
+    ext = hcomp(m, fiber_type(m, sigma_part(m, b, 0), g1->args[0], f, a1p), cover, sys_f, center);
+    t1 = sigma_part(m, ext, 0);
+    sys_r = sys_add(m, sys_r, s1->args[l], kan_closure(m, VAL_PLAM, CLOS_PATH_REV, 0, 3, sigma_part(m, ext, 1), apply_value(m, f, t1), a1p));
+    sg[l] = s1->args[l];
+    sg[l + 1u] = constant_line(m, t1);
+    if (sg[l + 1u] == NULL || sys_r == NULL)
+      return NULL;
+  }
+  a1 = hcomp(m, g1->args[0], face_join(m, g1->args[1], psi), sys_r, a1p);
+  ga[0] = g1->args[1];
+  ga[1] = system_value(m, sg, s1->argc);
+  ga[2] = a1;
+  if (a1 == NULL || ga[1] == NULL)
+    return NULL;
+  return reduce_glue_elem(m, ga, 3);
+}
+
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   if (!arity_ok(m, op, inst, n))
     return internal(m, "an operation with the wrong number of arguments");
   switch (op) {
   case OP_NAT:
+  case OP_FIN:
   case OP_FLAG:
   case OP_U256:
   case OP_ADDR:
@@ -2277,6 +2854,12 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return nat_add(m, a, n);
   case OP_NAT_SUB:
     return nat_sub(m, a, n);
+  case OP_FIN_ADD:
+    return fin_add(m, a, n);
+  case OP_FIN_NEG:
+    return fin_neg(m, a, n);
+  case OP_FIN_CASE:
+    return fin_case(m, a, n);
   case OP_NAT_EQ:
   case OP_NAT_LE:
     return nat_test(m, op, a, n);
@@ -2310,6 +2893,12 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return transp(m, a[0], a[1], a[2]);
   case OP_HCOMP:
     return hcomp(m, a[0], a[1], a[2], a[3]);
+  case OP_GLUE:
+    return reduce_glue(m, a, n);
+  case OP_GLUE_ELEM:
+    return reduce_glue_elem(m, a, n);
+  case OP_UNGLUE:
+    return reduce_unglue(m, a, n);
   }
   return internal(m, "an unknown operation");
 }
@@ -2323,6 +2912,9 @@ static const Value *eval_op(Machine *m, const Env *env, const Core *c) {
     args[i] = eval_core(m, env, c->args[i]);
     if (args[i] == NULL)
       return NULL;
+    /* A finAll case at a literal: eval only the body of that literal. */
+    if (i == 0 && c->op == OP_FIN_CASE && args[0]->kind == VAL_NAT)
+      return args[0]->nat < c->argc - 1u ? eval_core(m, env, c->args[args[0]->nat + 1u]) : internal(m, "a Fin case on a value out of range");
   }
   return reduce_op(m, c->op, c->inst, c->field, args, c->argc);
 }
@@ -2435,6 +3027,22 @@ static int conv_pair(Machine *m, uint32_t level, const Value *pair, const Value 
       && conv_values(m, level, pair->args[1], make(m, VAL_STUCK, second, 0, 1, neutral, NULL, NULL));
 }
 
+/* Equal branches may cover a face in a different order or subdivision. */
+static int conv_system(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  const Value *cover;
+  uint32_t i;
+  uint32_t j;
+  for (i = 0; i + 1u < a->argc; i += 2u) {
+    cover = val_iend(m, 0);
+    for (j = 0; j + 1u < b->argc; j += 2u)
+      if (conv_values(m, level, a->args[i + 1u], b->args[j + 1u]))
+        cover = face_join(m, cover, b->args[j]);
+    if (!face_implies(m, a->args[i], cover))
+      return 0;
+  }
+  return 1;
+}
+
 /* The last argument of an operation is compared in the loop, so a long
    list does not nest. */
 static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b) {
@@ -2478,6 +3086,8 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
       break;
     case VAL_OP:
     case VAL_STUCK:
+      if (val_is(a, OP_SYSTEM) && val_is(b, OP_SYSTEM))
+        return conv_system(m, level, a, b) && conv_system(m, level, b, a);
       if (!same_head(a, b))
         return 0;
       if (a->argc == 0)
@@ -2765,8 +3375,12 @@ static const char *var_name(const Printer *p, uint64_t level) {
 
 static void print_value(Printer *p, const Value *v, int atom);
 
+static int is_glue(const Value *v) {
+  return v != NULL && (v->kind == VAL_OP || v->kind == VAL_STUCK) && (v->op == OP_GLUE || v->op == OP_GLUE_ELEM || v->op == OP_UNGLUE);
+}
+
 static int is_chain(const Value *v) {
-  return v != NULL && (v->kind == VAL_OP || v->kind == VAL_STUCK) && v->argc > 0 && v->op != OP_SYSTEM;
+  return v != NULL && (v->kind == VAL_OP || v->kind == VAL_STUCK) && v->argc > 0 && v->op != OP_SYSTEM && v->op != OP_FIN_CASE && !is_glue(v);
 }
 
 static int print_name_taken(const Printer *p, const char *name) {
@@ -2887,21 +3501,23 @@ static void print_ival(Printer *p, const Value *v, int atom) {
 
 /* A system prints as its tube, `fun i => [ k -> t, ... ]`: each branch is
    applied to ONE fresh interval name, so all bodies share that binder. A
-   key is in the outer context. */
-static void print_system(Printer *p, const Value *v, int atom) {
+   key is in the outer context. A GLUE tube prints `fun (_ : I) => [ ... ]`:
+   the Glue rules refuse other binders, and a Glue branch does not use it. */
+static void print_system(Printer *p, const Value *v, int atom, int glue) {
   uint32_t level = p->name_count + p->extra_count;
   const Value *first = v->argc >= 2u ? v->args[1] : NULL;
   const char *name = first != NULL && first->kind == VAL_PLAM && first->name != NULL ? first->name : "i";
   char fresh[32];
   uint32_t suffix = 0;
   uint32_t k;
-  while (print_name_taken(p, name) || name[0] == '%') {
+  name = glue ? "_" : name;
+  while (!glue && (print_name_taken(p, name) || name[0] == '%')) {
     snprintf(fresh, sizeof fresh, "_x%u", suffix++);
     name = fresh;
   }
   put(p, atom ? "(" : "");
   put(p, "fun ");
-  put(p, name);
+  put(p, glue ? "(_ : I)" : name);
   put(p, " => [");
   if (p->extra_count < PRINT_NAMES_MAX)
     p->extra[p->extra_count] = name;
@@ -2917,14 +3533,43 @@ static void print_system(Printer *p, const Value *v, int atom) {
   put(p, atom ? ")" : "");
 }
 
+/* Glue A phi sys, glue sys a and unglue g. glue does not print phi, and
+   unglue does not print A, phi and sys: the checker reads them from the
+   type. */
+static void print_glue(Printer *p, const Value *v, int atom) {
+  uint32_t first = v->op == OP_UNGLUE ? 3u : v->op == OP_GLUE_ELEM ? 1u : 0u;
+  uint32_t i;
+  put(p, atom ? "(" : "");
+  put(p, op_name(p->m, v->op, v->inst, v->field));
+  for (i = first; i < v->argc; i++) {
+    put(p, " ");
+    if (val_is(v->args[i], OP_SYSTEM))
+      print_system(p, v->args[i], 1, 1);
+    else
+      print_value(p, v->args[i], 1);
+  }
+  put(p, atom ? ")" : "");
+}
+
 static void print_other(Printer *p, const Value *v, int atom) {
   char num[96];
   if (v == NULL) {
     put(p, "?");
     return;
   }
+  /* Internal finite cases have no surface form. Do not report printable
+     source syntax when replay would resolve an unknown or unrelated name. */
+  if ((v->kind == VAL_OP || v->kind == VAL_STUCK) && v->op == OP_FIN_CASE) {
+    put(p, "?");
+    p->full = 1;
+    return;
+  }
   if (v->kind == VAL_OP && v->op == OP_SYSTEM) {
-    print_system(p, v, atom);
+    print_system(p, v, atom, 0);
+    return;
+  }
+  if (is_glue(v)) {
+    print_glue(p, v, atom);
     return;
   }
   switch (v->kind) {

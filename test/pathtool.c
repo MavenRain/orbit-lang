@@ -25,6 +25,27 @@ static const char PARAM_HIT[] =
   "family ParamHit (a : Trunc1 Nat) := paramPoint (paramValue : Trunc1 Nat) |\n"
   "  paramLoop (i : I) [ ~i -> paramPoint a a, i -> paramPoint a a ]\n";
 
+/* The domain defs that the Glue rows use (S5, coin-lang 91d7091): the
+   tool embeds no domain, so the rows take them as a prelude. */
+static const char EQUIV[] =
+  "def transport : (X : Type 0) -> (Y : Type 0) -> Path (Type 0) X Y -> X -> Y :=\n"
+  "  fun (X : Type 0) => fun (Y : Type 0) => fun (p : Path (Type 0) X Y) => fun (a : X) => transp (fun (i : I) => p @ i) i0 a\n"
+  "def isContr : (A : Type 0) -> Type 0 :=\n"
+  "  fun (A : Type 0) => Sigma (c : A) ((x : A) -> Path A c x)\n"
+  "def fiber : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (y : B) -> Type 0 :=\n"
+  "  fun (A : Type 0) => fun (B : Type 0) => fun (f : A -> B) => fun (y : B) => Sigma (x : A) (Path B (f x) y)\n"
+  "def isEquiv : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> Type 0 :=\n"
+  "  fun (A : Type 0) => fun (B : Type 0) => fun (f : A -> B) => (y : B) -> isContr (fiber A B f y)\n"
+  "def Equiv : (A : Type 0) -> (B : Type 0) -> Type 0 :=\n"
+  "  fun (A : Type 0) => fun (B : Type 0) => Sigma (f : A -> B) (isEquiv A B f)\n"
+  "def idEquiv : (A : Type 0) -> Equiv A A :=\n"
+  "  fun (A : Type 0) => pack (fun (x : A) => x) (fun (y : A) =>\n"
+  "    pack (pack y refl) (fun (z : fiber A A (fun (x : A) => x) y) =>\n"
+  "      fun (i : I) => pack (payload z @ ~i) (fun (j : I) => payload z @ (~i \\/ j))))\n"
+  "def ua : (A : Type 0) -> (B : Type 0) -> (e : Equiv A B) -> Path (Type 0) A B :=\n"
+  "  fun (A : Type 0) => fun (B : Type 0) => fun (e : Equiv A B) =>\n"
+  "    fun (i : I) => Glue B (~i \\/ i) (fun (_ : I) => [ ~i -> pack A e, i -> pack B (idEquiv B) ])\n";
+
 static int checked(Arena *arena, Machine *m, Diag *diag, const char *source) {
   TokenList tokens = {0};
   DeclList decls = {0};
@@ -59,6 +80,106 @@ static int roundtrip(const char *label, const char *prelude, const char *source)
   if (!ok) {
     fprintf(stderr, "FAIL %s\n", label);
     diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
+/* A stuck internal finite case has no surface syntax: the printer refuses
+   it (S5, ported from coin-lang 44c917f). */
+static int print_refused(const char *label, const char *prelude, const char *source) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  char value[8192], program[32768];
+  int ok;
+  arena_init(&arena, (size_t)128 << 20);
+  snprintf(program, sizeof program, "%s%s", prelude, source);
+  ok = checked(&arena, &m, &diag, program);
+  if (ok)
+    ok = !value_print(&m, NULL, 0, def_value(&m, m.def_count - 1u), value, sizeof value)
+      && !diag.set;
+  if (!ok) {
+    fprintf(stderr, "FAIL %s: an internal finite case has no surface syntax\n", label);
+    if (diag.set) diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
+/* Glue composition and system conversion (S5, ported from coin-lang
+   34acff5): ACCEPTS checks a program, SYSTEM_CONVERSION compares two
+   systems by branch values and face coverage. */
+static int accepts(const char *label, const char *prelude, const char *source) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  char program[32768];
+  int ok;
+  arena_init(&arena, (size_t)128 << 20);
+  snprintf(program, sizeof program, "%s%s", prelude, source);
+  ok = checked(&arena, &m, &diag, program);
+  if (!ok) {
+    fprintf(stderr, "FAIL %s\n", label);
+    diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
+static int system_conversion(void) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  Value lines[2] = {{0}, {0}};
+  Value negative;
+  IConj conjunction;
+  uint32_t negative_lit = 1;
+  const Value *points[2];
+  const Value *args[6];
+  const Value *i;
+  const Value *ni;
+  const Value *original;
+  const Value *other;
+  int ok;
+  uint32_t k;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = checked(&arena, &m, &diag, "def seed : Nat := 0\n");
+  if (ok) {
+    for (k = 0; k < 2u; k++) {
+      points[k] = val_nat(&m, k);
+      lines[k].kind = VAL_PLAM;
+      lines[k].tag = CLOS_CONST;
+      lines[k].args = &points[k];
+      lines[k].argc = 1;
+    }
+    i = val_ivar(&m, 0);
+    negative = *i;
+    conjunction.lits = &negative_lit;
+    conjunction.count = 1;
+    negative.conj = &conjunction;
+    ni = &negative;
+    args[0] = i; args[1] = &lines[0];
+    args[2] = ni; args[3] = &lines[1];
+    original = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 4);
+    args[0] = ni; args[1] = &lines[1];
+    args[2] = i; args[3] = &lines[0];
+    other = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 4);
+    ok = conv_values(&m, 2, original, other);
+    args[1] = &lines[0]; args[3] = &lines[1];
+    other = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 4);
+    ok = ok && !conv_values(&m, 2, original, other);
+    args[0] = i; args[1] = &lines[0];
+    other = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 2);
+    ok = ok && !conv_values(&m, 2, original, other);
+    args[2] = ni; args[3] = &lines[1];
+    args[4] = face_meet(&m, i, val_ivar(&m, 1)); args[5] = &lines[0];
+    other = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 6);
+    ok = ok && conv_values(&m, 2, original, other) && !diag.set;
+  }
+  if (!ok) {
+    fprintf(stderr, "FAIL system conversion: order, values, coverage or refinement\n");
+    if (diag.set) diag_print(&diag, stderr);
   }
   arena_release(&arena);
   return ok;
@@ -142,6 +263,49 @@ int main(void) {
     "  | hhSquare (hhU : HH) (hhV : Path HH hhU hhU) (i : I) (j : I) [ ~i -> hhNode hhU hhU (fun (k : I) => hhV @ (j /\\ ~j /\\ k /\\ ~k)),\n"
     "      i -> hhNode hhU hhU (fun (k : I) => hhV @ (j /\\ ~j /\\ k /\\ ~k)), ~j -> hhNode hhU hhU refl, j -> hhNode hhU hhU refl ]\n",
     "def original : HH -> HH := fun (z : HH) => fold hhBase (fun (x : HH) (y : HH) (p : Path HH x y) => hhNode x y p) (fun (x : HH) (p : Path HH x x) => fun (a : I) => fun (b : I) => hhSquare x p a b) z\n");
+  failed += !roundtrip("stuck Fin addition", "",
+    "def original : (r : Fin 11) -> Fin 11 := fun (r : Fin 11) => finAdd 11 r 3\n");
+  failed += !print_refused("finite case function printing", "",
+    "def original : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl\n");
+  failed += !print_refused("finite case path printing", "",
+    "def p : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl\n"
+    "def original : Path (Fin 2 -> Fin 2) (fun k => finAdd 2 k 0) (fun k => k) := funExt p\n");
+  failed += !roundtrip("Glue type at a neutral face", EQUIV,
+    "def original : (A : Type 0) -> (e : Equiv A A) -> (f : Equiv A A) -> Path (Type 0) A A := fun A e f => fun (i : I) => Glue A (~i \\/ i) (fun (_ : I) => [ ~i -> pack A e, i -> pack A f ])\n");
+  failed += !roundtrip("stuck unglue", EQUIV,
+    "def original : (A : Type 0) -> (e : Equiv A A) -> (x : A) -> (y : A) -> (g : PathP (fun (i : I) => Glue A (~i \\/ i) (fun (_ : I) => [ ~i -> pack A e, i -> pack A e ])) x y) -> Path A (witness e x) (witness e y) := fun A e x y g => fun (i : I) => unglue (g @ i)\n");
+  failed += !roundtrip("univalence at a Glue endpoint", EQUIV,
+    "def G : Type 0 := Glue (Fin 3) i0 (fun (_ : I) => [ ])\n"
+    "def u : G := glue (fun (_ : I) => [ ]) 0\n"
+    "def original : G := transport G G (ua G G (idEquiv G)) u\n");
+  failed += !roundtrip("unglue at a nested Glue face", EQUIV,
+    "def G : Type 0 := Glue (Fin 3) i0 (fun (_ : I) => [ ])\n"
+    "def u : G := glue (fun (_ : I) => [ ]) 0\n"
+    "def p : PathP (fun (i : I) => Glue G (~i \\/ i) (fun (_ : I) => [ ~i -> pack G (idEquiv G), i -> pack G (idEquiv G) ])) u u := fun (i : I) => glue (fun (_ : I) => [ ~i -> u, i -> u ]) u\n"
+    "def original : PathP (fun (i : I) => Path G (unglue (p @ i)) u) refl refl := fun (i : I) => refl\n");
+  failed += !system_conversion();
+  failed += !accepts("transport at a Glue with a stable face", EQUIV,
+    "def G : Path (Type 0) (Fin 3) (Fin 3) := fun (r : I) => Glue (Fin 3) (~r \\/ r) (fun (_ : I) => [ ~r -> pack (Fin 3) (idEquiv (Fin 3)), r -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g : PathP (fun (r : I) => G @ r) 0 0 := fun (r : I) => glue (fun (_ : I) => [ ~r -> 0, r -> 0 ]) 0\n"
+    "def same : PathP (fun (r : I) => Path (Fin 3) (unglue (transp (fun (_ : I) => G @ r) i0 (g @ r))) 0) refl refl := fun (r : I) => refl\n");
+  failed += !accepts("transport at a Glue with a nonempty constancy face", EQUIV,
+    "def G : Path (Type 0) (Fin 3) (Fin 3) := fun (r : I) => Glue (Fin 3) (~r \\/ r) (fun (_ : I) => [ ~r -> pack (Fin 3) (idEquiv (Fin 3)), r -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g : PathP (fun (r : I) => G @ r) 0 0 := fun (r : I) => glue (fun (_ : I) => [ ~r -> 0, r -> 0 ]) 0\n"
+    "def same : PathP (fun (r : I) => Path (Fin 3) (unglue (transp (fun (_ : I) => G @ r) r (g @ r))) 0) refl refl := fun (r : I) => refl\n");
+  failed += !accepts("Glue composition with reordered faces", EQUIV,
+    "def G : Path (Type 0) (Fin 3) (Fin 3) := fun (j : I) => Glue (Fin 3) (~j \\/ j) (fun (_ : I) => [ ~j -> pack (Fin 3) (idEquiv (Fin 3)), j -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g : PathP (fun (j : I) => G @ j) 0 0 := fun (j : I) => glue (fun (_ : I) => [ ~j \\/ j -> 0 ]) 0\n"
+    "def same : PathP (fun (j : I) => Path (G @ j) (hcomp (G @ j) (~j \\/ j) (fun (_ : I) => [ ~j -> g @ j, j -> g @ j ]) (g @ j)) (g @ j)) refl refl := fun (j : I) => refl\n");
+  failed += !accepts("Glue composition under a stronger face", EQUIV,
+    "def G0 : Path (Type 0) (Fin 3) (Fin 3) := fun (j : I) => Glue (Fin 3) (~j \\/ j) (fun (_ : I) => [ ~j -> pack (Fin 3) (idEquiv (Fin 3)), j -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g0 : PathP (fun (j : I) => G0 @ j) 0 0 := fun (j : I) => glue (fun (_ : I) => [ ~j \\/ j -> 0 ]) 0\n"
+    "def G1 : Path (Type 0) (Fin 3) (Fin 3) := fun (j : I) => Glue (Fin 3) (~j \\/ j) (fun (_ : I) => [ ~j -> pack (Fin 3) (idEquiv (Fin 3)), j -> pack (Fin 3) (idEquiv (Fin 3)), ~j -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g1 : PathP (fun (j : I) => G1 @ j) 0 0 := fun (j : I) => glue (fun (_ : I) => [ ~j \\/ j -> 0 ]) 0\n"
+    "def G : Path (Path (Type 0) (Fin 3) (Fin 3)) G0 G1 := fun (i : I) => fun (j : I) => Glue (Fin 3) (~j \\/ j) (fun (_ : I) => [ ~j -> pack (Fin 3) (idEquiv (Fin 3)), j -> pack (Fin 3) (idEquiv (Fin 3)), ~j /\\ i -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g : PathP (fun (i : I) => PathP (fun (j : I) => G @ i @ j) 0 0) g0 g1 := fun (i : I) => fun (j : I) => glue (fun (_ : I) => [ ~j \\/ j -> 0 ]) 0\n"
+    "def same0 : PathP (fun (j : I) => Path (G0 @ j) (hcomp (G0 @ j) (~j \\/ j) (fun (_ : I) => [ ~j -> g0 @ j, j -> g0 @ j ]) (g0 @ j)) (g0 @ j)) refl refl := fun (j : I) => refl\n"
+    "def same1 : PathP (fun (j : I) => Path (G1 @ j) (hcomp (G1 @ j) (~j \\/ j) (fun (_ : I) => [ ~j -> g1 @ j, j -> g1 @ j ]) (g1 @ j)) (g1 @ j)) refl refl := fun (j : I) => refl\n"
+    "def same : PathP (fun (i : I) => PathP (fun (j : I) => Path (G @ i @ j) (hcomp (G @ i @ j) (~j \\/ j) (fun (_ : I) => [ ~j -> g @ i @ j, j -> g @ i @ j ]) (g @ i @ j)) (g @ i @ j)) refl refl) same0 same1 := fun (i : I) => fun (j : I) => refl\n");
   if (failed == 0)
     puts("path regressions: passed");
   else

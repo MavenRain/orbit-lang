@@ -316,7 +316,7 @@ for each build), the counts in docs/STATUS.md, and a USER commit.
 | S2 | DONE 2026-10-16: port of the sealed-lang S2 to S4 kernel (paths, Kan operations, HITs, QITs, truncations), sample domain removed, EVM runner precompiles 0x01, 0x06, 0x07, 0x08 (sealed-lang bc8e168) | Prop and SProp as a type and as a name; 4 irrelevance marker spellings; refl between different Trunc1, Trunc0 and isProp elements; a path of paths between different loops; precompile vectors (EIP-196, EIP-197) |
 | S3 | DONE 2026-10-17: base-span pruning: the kit items and the sealed-lang base ops natDiv, natMod, hash, ecrecover, ecAdd, ecMul, ecPairing, addrToU256 made internal (section 4); the 11 types and 9 operations declared | refusals for a kit name and for a sealed-lang base op in guest code (22 REFUSE_KIT rows, each `ok` under `langc --kit`); 6 REFUSE_SIG rows for the design signature |
 | S4 | DONE 2026-10-17: Orbit as a quotient of the voter orbits (the HIT, QIT and truncation formers came with the S2 port), as a kernel declaration after `act`; the dependent eliminator `elim` on Sum and Unit (USER ruling 2026-10-17) | Orbit fold without isSet, wrong Orbit boundary, Orbit path at run time (REFUSE_LOWER); elim case type, case count and scrutinee kind; Prop-like: a motive into Prop, elim on a path (no K), no Unit eta |
-| S5 | Glue, ua, uaBeta, hcomp at U (coin-lang merge) | Glue boundary mismatch, ua on a non-equivalence |
+| S5 | DONE 2026-10-17: Glue, ua, uaBeta, hcomp at U (coin-lang merge of 44c917f, 91d7091 and 34acff5, builder call S5); Glue, glue and unglue guest formers (F17); ua and the equivalences domain definitions; Fin internal (O23) | Glue boundary mismatch, ua on a non-equivalence; Glue tube, cover and binder, unglue type; Fin range and case; hcomp cap and universe; Prop-like: a Glue at Prop, two isEquiv proofs, two ua proofs |
 | S6 | HIITs and QIITs | wrong index in a path constructor, inductive-inductive order, missing coherence case |
 | S7 | DAO prelude and laws 1 to 4 as guest theorems; menu of constitutions | a non-invariant constitution is refused; a wrong gov unit is refused |
 | S8 | ZK layer: BN254 G1 in C, castPrivate, proveZK, project, verifyZK lowering, nullifier map | known-answer vectors; mutants: wrong ring member, reused key image, flipped choice, wrong poll id, point not on the curve |
@@ -415,6 +415,66 @@ path (no K), and two Unit variables that are not convertible (no eta,
 no strict proposition). S4 adds no empty type: `either` into `Type 0`
 gives the disjointness cases.
 
+Builder call (S5, 2026-10-17): port the three coin-lang commits in
+order, 44c917f, 91d7091, 34acff5, with `cherry-pick -n` onto 9e28399,
+and resolve each by hand before the next. The repos have no common git
+ancestor. The file base of 44c917f is its coin-lang parent 582ecef, the
+last coin-lang commit that sealed-lang ported before R36 dropped the S3
+chain. A probe in a scratch clone gave 44 conflict hunks (26 in code)
+and 6 modify/delete when each commit goes onto 9e28399 alone, and 21
+hunks when they go in order. The code conflicts are at the Rule enum,
+the `rule` switch, BUILTINS (each orbit-lang row has the seventh field
+VIS), transp_data, reduce_op, kan_apply, hcomp and rule_hcomp. Each new
+Op, Rule and closure tag gets an arm in each switch (clang
+`-Wswitch-enum`) and a row in OP_NAMES and OP_ARITY. orbit-lang has no
+JSON emitter and its emit gate is bytecode, so the hunks of src/json.c,
+test/json and test/emit are not ported (a deviation). The hunks of
+test/path-regressions.c go into test/pathtool.c.
+
+Guest forms: Glue, glue and unglue are formers with VIS_GUEST, not
+INTERNAL names. ua, uaArrow, isContr, fiber, isEquiv, Equiv, idEquiv,
+isoCap, isoPath and isoToEquiv are domain definitions (ORIGIN_DOMAIN):
+guest code uses them and cannot define them again (R4). uaBeta and
+finAll are not names: uaBeta is the reduction `transp (ua e) x` to the
+function of e applied to x (transp_glue), and finAll is the check of a
+function on `Fin n` by its n literal cases. Fin, finAdd and finNeg are
+VIS_INTERNAL (O23): `Fin n` takes `n : Nat` and its elements are Nat
+literals, which guest code cannot write (REFUSE_KIT, O3 (a)). So the
+Fin rows and examples/equiv.lang run under `langc --kit`. A guest
+example on the span shows univalence: the flip of Choice (by elim) as
+an equivalence by isoToEquiv, and transp along its ua reduces. The
+domain definitions that sealed-lang R36 dropped with Glue (its O36
+list) come back where orbit-lang S3 kept the definitions that they
+extend, in kit mode if they use Fin.
+
+Refusal rows: a Glue boundary mismatch (GLUE_BOUNDARY), ua on a
+non-equivalence (TYPE_MISMATCH), a Glue tube that is not an
+equivalence (GLUE_EQUIV), a Glue system that does not cover its face
+(SYSTEM_COVER), unglue on a value that is not of a Glue type
+(UNGLUE_TYPE), a used tube binder (GLUE_BINDER), uaBeta on a neutral
+equivalence (PATH_END), ua of an equivalence equal to refl (PATH_UIP),
+hcomp at U with a wrong cap (HCOMP_CAP), hcomp above Type 0
+(HCOMP_UNIVERSE), and in kit mode a Fin literal out of range
+(FIN_RANGE) and a missing or stuck Fin case (FIN_CASE). A Glue type or
+glue value at a word position gives REFUSE_LOWER. With hcomp at U the
+row hcomp-universe (hcomp at Type 0) is accepted, so it goes out of
+the check rows and kit.txt. Glue opens one binder form, the tube
+`fun (_ : I) =>`, and no universe, so S5 adds Prop-like rows (R11): a
+Glue at Prop (NAME_UNKNOWN), two different isEquiv proofs of one map
+that are not convertible, and the ua of one map with two different
+equivalence proofs that are not convertible (no proof irrelevance for
+isContr or isEquiv). Each refusal site gets one admission mutant.
+
+O22 with hcomp at U: it still holds. hcomp at U gives a type (a Glue
+type), hcomp at a Glue type gives a glue element, and unglue of a glue
+element over a Sum base reduces by the hcomp of data (a constructor or
+an `hcomp_stuck` value). So `blocked` sees a constructor or a stuck
+value before the formal hcomp test of `reduce_elim`. One eval row pins
+it: elim on the unglue of an hcomp in a Glue type over a Sum.
+
+The build is by hand (the USER route of S2 to S4), one commit at a
+time with the gate after each.
+
 ## 9. Open items
 
 USER ruling (S1, 2026-10-16): every default below is RULED; where an item
@@ -484,3 +544,9 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
   of a type with path constructors, which elim refuses (O21). A later
   slice adds the Kan rule for elim or keeps the neutral form. The lowerer
   refuses a neutral elim at a word position (REFUSE_LOWER, src/lower.c).
+  S5: O22 still holds with hcomp at U and at Glue (builder call S5), and
+  an eval row pins it.
+- O23 Fin is internal (builder call S5, ruled by O3 (a)): Fin, finAdd and
+  finNeg have VIS_INTERNAL, because `Fin n` takes a Nat and its elements
+  are Nat literals. A guest form of a finite type on the span (for S_q
+  on Choice, O5) is a later slice.

@@ -73,7 +73,8 @@ j-refl-conv.lang PATH_END
 system-cover.lang SYSTEM_COVER
 system-overlap.lang SYSTEM_OVERLAP
 hcomp-cap.lang HCOMP_CAP
-hcomp-universe.lang HCOMP_UNIVERSE
+hcomp-universe-cap.lang HCOMP_CAP
+hcomp-higher-universe.lang HCOMP_UNIVERSE
 trans-unit.lang PATH_UIP
 state-boundary.lang DOMAIN_FAMILY
 fold-missing-path.lang TYPE_MISMATCH
@@ -130,3 +131,17 @@ orbit-boundary.lang PATH_END
 orbit-guest-def.lang REFUSE_SIG
 orbitproj-guest-def.lang REFUSE_SIG
 orbit-no-act.lang NAME_UNKNOWN
+fin-range.lang FIN_RANGE
+fin-all-case.lang FIN_CASE
+fin-case-stuck.lang FIN_CASE
+glue-equiv.lang GLUE_EQUIV
+glue-cover.lang SYSTEM_COVER
+glue-boundary.lang GLUE_BOUNDARY
+unglue-type.lang UNGLUE_TYPE
+ua-beta-neutral.lang PATH_END
+ua-not-refl.lang PATH_UIP
+glue-binder.lang GLUE_BINDER
+ua-non-equiv.lang TYPE_MISMATCH
+glue-prop.lang NAME_UNKNOWN
+isequiv-two-proofs.lang PATH_END
+ua-two-proofs.lang PATH_UIP

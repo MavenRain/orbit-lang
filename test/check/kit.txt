@@ -20,7 +20,7 @@ fold-missing-path.lang
 fold-path-boundary.lang
 hash-type.lang
 hcomp-cap.lang
-hcomp-universe.lang
+hcomp-universe-cap.lang
 history-alias-option.lang
 history-closed.lang
 history-existential-closed.lang
@@ -78,3 +78,12 @@ u256-addr.lang
 u256-law.lang
 universe-range.lang
 unknown.lang
+fin-range.lang
+fin-all-case.lang
+fin-case-stuck.lang
+glue-equiv.lang
+glue-cover.lang
+glue-boundary.lang
+unglue-type.lang
+ua-not-refl.lang
+glue-binder.lang

@@ -1,0 +1,8 @@
+-- REFUSE_LOWER (slice S5, O22): hcomp at a Glue type over U256 is a glue element, and its unglue is an hcomp at U256. The base reads the state, so the composition stays an hcomp value, and an hcomp is not a word.
+state State := makeState (count : U256)
+def init : State := makeState 0u
+
+def G : Type 0 := Glue U256 i0 (fun (_ : I) => [ ])
+def glueWord : (env : Env) -> (s : State) -> U256 :=
+  fun (env : Env) (s : State) =>
+    unglue (hcomp G i0 (fun (_ : I) => [ ]) (glue (fun (_ : I) => [ ]) (count s)))

@@ -1,7 +1,7 @@
 # Formers on the tcc-evm-contract host
 
 The front end of this kit is a copy of the tcc-wasm front end. `langc check`
-and `langc eval` accept the formers F1 to F15 as that front end does, and F16 (`elim`).
+and `langc eval` accept the formers F1 to F15 as that front end does, F16 (`elim`) and F17 (`Glue`, `glue`, `unglue`).
 `test/gate.sh` runs the examples on them.
 
 In orbit-lang S3, the kit examples and contract operations below require
@@ -36,10 +36,10 @@ section `EVM output`). The facts a program author needs:
   such as a sum over a closed `cons` chain, can build.
 - `pay` and `pull` are token CALLs (K4d). `emit` has no EVM form: use a
   named event.
-- The formers F1 to F16 are checked and evaluated (F12 and F13 as `Path`
+- The formers F1 to F17 are checked and evaluated (F12 and F13 as `Path`
   since sealed-lang S3). On the EVM only the first-order word residual of a body
   lowers. A residual of another form gives REFUSE_LOWER
-  (`test/lower/expect.txt`, 13 rows).
+  (`test/lower/expect.txt`, 16 rows).
 
 ## The base span (sealed-lang S2, ported in orbit-lang S2)
 

@@ -94,7 +94,12 @@ typedef enum {
   RULE_KMAP,
   RULE_KMAP_GET,
   RULE_KMAP_SET,
-  RULE_FIXED /* S2: a fixed signature over U256, Nat, G1 and List (Prod G1 G2) */
+  RULE_FIXED, /* S2: a fixed signature over U256, Nat, G1 and List (Prod G1 G2) */
+  RULE_FIN,
+  RULE_FIN_OP,
+  RULE_GLUE,
+  RULE_GLUE_ELEM,
+  RULE_UNGLUE
 } Rule;
 
 typedef struct {
@@ -117,6 +122,9 @@ static const Builtin BUILTINS[] = {
   {"Sum", 2, RULE_TYPE2, OP_SUM, OP_NAT, 0, VIS_GUEST},
   {"Option", 1, RULE_TYPE1, OP_OPTION, OP_NAT, 0, VIS_GUEST},
   {"List", 1, RULE_TYPE1, OP_LIST, OP_NAT, 0, VIS_GUEST},
+  {"Fin", 1, RULE_FIN, OP_FIN, OP_NAT, 0, VIS_INTERNAL},
+  {"finAdd", 3, RULE_FIN_OP, OP_FIN_ADD, OP_FIN, 0, VIS_INTERNAL},
+  {"finNeg", 2, RULE_FIN_OP, OP_FIN_NEG, OP_FIN, 0, VIS_INTERNAL},
   {"I", 0, RULE_INTERVAL, OP_INTERVAL, OP_NAT, 0, VIS_GUEST},
   {"i0", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 0, VIS_GUEST},
   {"i1", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 1, VIS_GUEST},
@@ -152,6 +160,9 @@ static const Builtin BUILTINS[] = {
   {"funExt", 1, RULE_FUNEXT, OP_INTERVAL, OP_NAT, 0, VIS_GUEST},
   {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0, VIS_GUEST},
   {"hcomp", 4, RULE_HCOMP, OP_HCOMP, OP_NAT, 0, VIS_GUEST},
+  {"Glue", 3, RULE_GLUE, OP_GLUE, OP_NAT, 0, VIS_GUEST},
+  {"glue", 2, RULE_GLUE_ELEM, OP_GLUE_ELEM, OP_NAT, 0, VIS_GUEST},
+  {"unglue", 1, RULE_UNGLUE, OP_UNGLUE, OP_NAT, 0, VIS_GUEST},
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0, VIS_INTERNAL},
   {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0, VIS_INTERNAL},
   {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FLAG, 0, VIS_INTERNAL},
@@ -1385,7 +1396,8 @@ static Branch *split_branches(Checker *c, const Branch *bs, uint32_t n, uint32_t
 }
 
 /* The body of B against A, with the tube binder NAME, under its single
-   conjunction. A key with no conjunction checks in the plain context. */
+   conjunction. A key with no conjunction checks in the plain context.
+   NAME is NULL for a binder that no term can use (Glue and glue). */
 static const Core *hcomp_branch(Checker *c, const char *name, const Core *a, const Branch *b) {
   const Env *saved = c->env;
   const Scope *scope = c->scope;
@@ -1560,74 +1572,220 @@ static const Core *rule_hcomp(Call *k) {
   const Core *phi;
   const Core *u0;
   const Core *args[4];
-  const Core **sys;
-  const Value *join;
-  const Value *pf;
-  const Term *cell;
   Branch *bs;
-  uint32_t n;
-  uint32_t count;
+  uint32_t n = 0;
   uint32_t i;
-  uint32_t j;
   if (av == NULL)
     return NULL;
-  if (av->kind == VAL_UNIV)
-    return nul(FAIL(c, "HCOMP_UNIVERSE", "hcomp at the universe %s needs Glue, which is not in this stage (S3)", show(c, av)));
+  if (av->kind == VAL_UNIV && av->nat != 0u)
+    return nul(FAIL(c, "HCOMP_UNIVERSE", "hcomp at Type %llu needs Glue above Type 0", (unsigned long long)av->nat));
   phi = check(c, k->args[1], interval_type(c));
   if (phi == NULL)
     return NULL;
   if (tube->kind != TERM_LAM || (tube->left != NULL && !is_interval(c, tube->left)) || tube->right == NULL || tube->right->kind != TERM_SYSTEM)
     return nul(FAIL(c, "TYPE_MISMATCH", "the tube of hcomp must be a system abstraction fun (i : I) => [ phi -> t, ... ]"));
-  n = system_size(tube->right);
-  bs = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *bs);
-  if (bs == NULL)
-    return nul(FAIL(c, "OOM", "out of memory"));
-  join = val_iend(c->m, 0);
-  for (cell = tube->right, i = 0; i < n; cell = cell->right, i++) {
-    bs[i].term = cell->left;
-    bs[i].key = check(c, cell->left->left, interval_type(c));
-    bs[i].face = face_norm(c->m, here(c, bs[i].key));
-    if (bs[i].face == NULL)
-      return NULL;
-    join = face_join(c->m, join, bs[i].face);
-  }
-  pf = face_norm(c->m, here(c, phi));
-  if (join == NULL || pf == NULL)
-    return NULL;
-  if (!conv_values(c->m, c->level, join, pf))
-    return nul(FAIL(c, "SYSTEM_COVER", "the keys of the system must cover %s, but their join is %s", show(c, pf), show(c, join)));
-  bs = split_branches(c, bs, n, &count);
+  bs = system_branches(c, tube, here(c, phi), &n);
   if (bs == NULL)
     return NULL;
-  n = count;
-  sys = arena_alloc(c->m->arena, (2u * (size_t)n + 1u) * sizeof *sys);
-  if (sys == NULL)
-    return nul(FAIL(c, "OOM", "out of memory"));
   for (i = 0; i < n; i++) {
     bs[i].body = hcomp_branch(c, tube->name, a, &bs[i]);
     if (bs[i].body == NULL)
       return NULL;
   }
-  for (i = 0; i < n; i++)
-    for (j = i + 1u; j < n; j++)
-      if (!hcomp_overlap(c, tube->name, face_meet(c->m, bs[i].face, bs[j].face), &bs[i], &bs[j]))
-        return NULL;
+  if (!system_overlaps(c, tube->name, bs, n))
+    return NULL;
   u0 = check(c, k->args[3], av);
   if (u0 == NULL)
     return NULL;
   for (i = 0; i < n; i++)
     if (!hcomp_cap(c, u0, &bs[i]))
       return NULL;
-  for (i = 0; i < n; i++) {
-    sys[2u * i] = bs[i].key;
-    sys[2u * i + 1u] = core_bind(c, CORE_PLAM, path_binder(tube->name), NULL, bs[i].body);
-  }
   args[0] = a;
   args[1] = phi;
-  args[2] = core_op(c, OP_SYSTEM, 0, 0, sys, 2u * n);
+  args[2] = system_core(c, path_binder(tube->name), bs, n);
   args[3] = u0;
   k->type = av;
   return core_op(c, OP_HCOMP, 0, 0, args, 4);
+}
+
+/* GLUE_BINDER: the tube of Glue and glue is fun (_ : I) => [ k -> t, ... ].
+   The binder must be _, so a branch cannot use it and an outer i stays
+   visible. The branches check under a binder with no name (see
+   glue_branch), so a branch cannot use the name _ for it. */
+static int glue_tube(Call *k, const Term *tube) {
+  Checker *c = k->c;
+  if (tube->kind != TERM_LAM || (tube->left != NULL && !is_interval(c, tube->left)) || tube->right == NULL || tube->right->kind != TERM_SYSTEM)
+    return FAIL(c, "TYPE_MISMATCH", "the tube of %s must be a system abstraction fun (_ : I) => [ phi -> t, ... ]", k->b->name);
+  if (tube->name != NULL && strcmp(tube->name, "_") != 0)
+    return FAIL(c, "GLUE_BINDER", "the tube binder of %s must be _, found %s; a branch of %s cannot use the tube variable", k->b->name, tube->name, k->b->name);
+  return 1;
+}
+
+/* Sigma (T : Type 0) (Equiv T A), the type of a Glue branch, for the type
+   AV in the current context. Equiv is the domain definition. */
+static const Core *equiv_sigma(Checker *c, const Value *av) {
+  uint32_t d = find_def(c->m, "Equiv");
+  const Core *equiv;
+  if (d == NO_DEF)
+    return nul(FAIL(c, "NAME_UNKNOWN", "Glue needs the domain definition Equiv, which is not declared"));
+  equiv = core_app(c, core_app(c, core_index(c, CORE_GLOBAL, d), core_index(c, CORE_VAR, 0)), quote_value(c->m, c->level + 1u, av));
+  return core_bind(c, CORE_SIGMA, "T", core_leaf(c, CORE_UNIV, 0), equiv);
+}
+
+/* 1 for OOM and for a failure of the evaluator. These failures are not
+   about a branch, so GLUE_EQUIV does not replace them. */
+static int kept_failure(const char *code) {
+  return strcmp(code, "OOM") == 0 || strcmp(code, "INTERNAL") == 0 || strcmp(code, "EVAL_FUEL") == 0 || strcmp(code, "EVAL_DEPTH") == 0;
+}
+
+/* GLUE_EQUIV: the branch B of Glue A phi sys is pack T e of type SIGMA,
+   that is Sigma (T : Type 0) (Equiv T A), where its key holds. A failure
+   of this check becomes GLUE_EQUIV, with the first code and message. */
+static const Core *glue_branch(Checker *c, const Core *sigma, const Value *av, const Branch *b) {
+  char inner[sizeof c->m->diag->msg];
+  const char *code;
+  Diag clean = *c->m->diag;
+  const Core *body = hcomp_branch(c, NULL, sigma, b);
+  if (body != NULL || !c->m->diag->set)
+    return body;
+  code = c->m->diag->code != NULL ? c->m->diag->code : "-";
+  if (kept_failure(code))
+    return NULL;
+  snprintf(inner, sizeof inner, "%s", c->m->diag->msg);
+  *c->m->diag = clean;
+  return nul(FAIL(c, "GLUE_EQUIV", "the branch for %s must be pack T e with T : Type 0 and e : Equiv T %s: %s: %s", show(c, here(c, b->key)), show(c, av), code, inner));
+}
+
+/* Glue A phi (fun (_ : I) => [ k0 -> pack T0 e0, ... ]), with A : Type 0,
+   phi : I, each key k : I in the outer context and each branch of type
+   Sigma (T : Type 0) (Equiv T A) where its key holds (S3b), of type
+   Type 0. The keys cover phi (SYSTEM_COVER), each branch is an
+   equivalence into A (GLUE_EQUIV) and two branches agree where both keys
+   hold (SYSTEM_OVERLAP). The core is OP_GLUE (A, phi, sys), with sys as
+   hcomp keeps it. */
+static const Core *rule_glue(Call *k) {
+  Checker *c = k->c;
+  const Term *tube = k->args[2];
+  const Core *a = check(c, k->args[0], val_univ(c->m, 0));
+  const Value *av = here(c, a);
+  const Core *phi = av == NULL ? NULL : check(c, k->args[1], interval_type(c));
+  const Core *sigma;
+  const Core *args[3];
+  Branch *bs;
+  uint32_t n = 0;
+  uint32_t i;
+  if (phi == NULL || !glue_tube(k, tube))
+    return NULL;
+  sigma = equiv_sigma(c, av);
+  bs = sigma == NULL ? NULL : system_branches(c, tube, here(c, phi), &n);
+  if (bs == NULL)
+    return NULL;
+  for (i = 0; i < n; i++) {
+    bs[i].body = glue_branch(c, sigma, av, &bs[i]);
+    if (bs[i].body == NULL)
+      return NULL;
+  }
+  if (!system_overlaps(c, "_", bs, n))
+    return NULL;
+  args[0] = a;
+  args[1] = phi;
+  args[2] = system_core(c, "_", bs, n);
+  k->type = val_univ(c->m, 0);
+  return core_op(c, OP_GLUE, 0, 0, args, 3);
+}
+
+/* GLUE_BOUNDARY: on each conjunction of the face of B, unglue of the
+   branch t of glue is the base A0. G is the expected Glue type. A key of G
+   holds there, so unglue t is witness e t (S3b face rule). */
+static int glue_boundary(Checker *c, const Value *g, const Core *a0, const Branch *b) {
+  const Core *args[4];
+  const Core *un;
+  const Env *e = NULL;
+  const Value *vu;
+  const Value *va;
+  uint32_t j;
+  for (j = 0; j < 3u; j++)
+    args[j] = quote_value(c->m, c->level + 1u, g->args[j]);
+  args[3] = b->body;
+  un = core_op(c, OP_UNGLUE, 0, 0, args, 4);
+  if (un == NULL)
+    return 0;
+  for (j = 0; j < b->face->conj_count; j++) {
+    if (!env_face(c->m, c->env, &b->face->conj[j], &e))
+      return 0;
+    vu = branch_at(c, e, un, val_iend(c->m, 1));
+    va = eval_core(c->m, e, a0);
+    if (vu == NULL || va == NULL)
+      return 0;
+    if (!conv_values(c->m, c->level, vu, va))
+      return FAIL(c, "GLUE_BOUNDARY", "unglue of the branch for %s must be the base of glue where its key holds, but it is %s and the base is %s", show(c, here(c, b->key)), show(c, vu), show(c, va));
+  }
+  return 1;
+}
+
+/* glue (fun (_ : I) => [ k0 -> t0, ... ]) a against Glue A phi sys (S3b),
+   in check mode only. The keys cover phi (SYSTEM_COVER), each branch t is
+   a term of the Glue type where its key holds, that is of T, two branches
+   agree where both keys hold (SYSTEM_OVERLAP), a : A and unglue t is a
+   where the key of t holds (GLUE_BOUNDARY). The core is OP_GLUE_ELEM (phi,
+   sys, a). */
+static const Core *rule_glue_elem(Call *k) {
+  Checker *c = k->c;
+  const Value *g = k->hint;
+  const Term *tube = k->args[0];
+  const Core *gt;
+  const Core *a;
+  const Core *args[3];
+  Branch *bs;
+  uint32_t n = 0;
+  uint32_t i;
+  if (!val_is(g, OP_GLUE) || g->argc != 3u)
+    return need_type(k, "Glue A phi sys");
+  if (!glue_tube(k, tube))
+    return NULL;
+  gt = quote_value(c->m, c->level, g);
+  bs = gt == NULL ? NULL : system_branches(c, tube, g->args[1], &n);
+  if (bs == NULL)
+    return NULL;
+  for (i = 0; i < n; i++) {
+    bs[i].body = hcomp_branch(c, NULL, gt, &bs[i]);
+    if (bs[i].body == NULL)
+      return NULL;
+  }
+  if (!system_overlaps(c, "_", bs, n))
+    return NULL;
+  a = check(c, k->args[1], g->args[0]);
+  if (a == NULL)
+    return NULL;
+  for (i = 0; i < n; i++)
+    if (!glue_boundary(c, g, a, &bs[i]))
+      return NULL;
+  args[0] = quote_value(c->m, c->level, g->args[1]);
+  args[1] = system_core(c, "_", bs, n);
+  args[2] = a;
+  k->type = g;
+  return core_op(c, OP_GLUE_ELEM, 0, 0, args, 3);
+}
+
+/* unglue g, with g of the type Glue A phi sys (S3b), of type A. The core
+   keeps A, phi and sys, as p @ r keeps its ends (S1), because a neutral
+   carries no type. The type of g must be a Glue type (UNGLUE_TYPE). The
+   core is OP_UNGLUE (A, phi, sys, g). */
+static const Core *rule_unglue(Call *k) {
+  Checker *c = k->c;
+  const Value *gt = NULL;
+  const Core *g = infer(c, k->args[0], &gt);
+  const Core *args[4];
+  uint32_t i;
+  if (g == NULL)
+    return NULL;
+  if (!val_is(gt, OP_GLUE) || gt->argc != 3u)
+    return nul(FAIL(c, "UNGLUE_TYPE", "unglue needs a term of a type Glue A phi sys, found a term of type %s", show(c, gt)));
+  for (i = 0; i < 3u; i++)
+    args[i] = quote_value(c->m, c->level, gt->args[i]);
+  args[3] = g;
+  k->type = gt->args[0];
+  return core_op(c, OP_UNGLUE, 0, 0, args, 4);
 }
 
 /* natAdd, u256Add, addrEq, toU256 and the like: each argument has the type
@@ -1670,6 +1828,25 @@ static const Core *rule_fixed(Call *k) {
   }
   k->type = k->b->result == OP_PROD ? g1 : tyop(c, k->b->result, 0, NULL, NULL, NULL);
   return core_op(c, k->b->op, 0, 0, args, k->b->arity);
+}
+
+/* Fin n: n : Nat, Fin n : Type 0. */
+static const Core *rule_fin(Call *k) {
+  const Core *n = check(k->c, k->args[0], nat_type(k->c));
+  k->type = val_univ(k->c->m, 0);
+  return op3(k->c, OP_FIN, 0, 1, n, NULL, NULL);
+}
+
+/* finAdd n a b, finNeg n a: n : Nat, each other argument : Fin n, the
+   result : Fin n. */
+static const Core *rule_fin_op(Call *k) {
+  Checker *c = k->c;
+  const Core *n = check(c, k->args[0], nat_type(c));
+  const Value *fin = n == NULL ? NULL : tyop(c, OP_FIN, 1, here(c, n), NULL, NULL);
+  const Core *x = fin == NULL ? NULL : check(c, k->args[1], fin);
+  const Core *y = x == NULL || k->b->arity < 3u ? NULL : check(c, k->args[2], fin);
+  k->type = fin;
+  return op3(c, k->b->op, 0, k->b->arity, n, x, y);
 }
 
 /* flagIf b yes no */
@@ -1788,6 +1965,12 @@ static const Core *rule(Call *k) {
     return rule_transp(k);
   case RULE_HCOMP:
     return rule_hcomp(k);
+  case RULE_GLUE:
+    return rule_glue(k);
+  case RULE_GLUE_ELEM:
+    return rule_glue_elem(k);
+  case RULE_UNGLUE:
+    return rule_unglue(k);
   case RULE_NAT2:
   case RULE_TO_U256:
     return rule_prim(k, OP_NAT);
@@ -1795,6 +1978,10 @@ static const Core *rule(Call *k) {
     return rule_prim(k, OP_U256);
   case RULE_ADDR2:
     return rule_prim(k, OP_ADDR);
+  case RULE_FIN_OP:
+    return rule_fin_op(k);
+  case RULE_FIN:
+    return rule_fin(k);
   case RULE_FLAG_IF:
     return rule_flag_if(k);
   case RULE_KMAP:
@@ -2190,18 +2377,63 @@ static const Core *infer_plam(Checker *c, const Term *t, const Value **type) {
   return core_bind(c, CORE_PLAM, t->name, NULL, body);
 }
 
+/* The literal bound of a Fin n domain, or 0 when there is no finAll: the
+   bound must leave room for the k argument in the uint32_t arity. */
+static uint64_t fin_cases(const Value *dom) {
+  if (!val_is(dom, OP_FIN) || dom->args[0]->kind != VAL_NAT || dom->args[0]->nat >= UINT32_MAX)
+    return 0;
+  return dom->args[0]->nat;
+}
+
+/* finAll (S3a): the body at each literal j below n, with the binder bound
+   to j. The core is OP_FIN_CASE (k, body0, ..., body(n-1)). */
+static const Core *check_fin_all(Checker *c, const Term *t, const Value *hint, uint64_t n) {
+  const Core **args = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *args);
+  char inner[sizeof c->m->diag->msg];
+  const char *code;
+  Diag clean = *c->m->diag;
+  uint64_t j;
+  if (args == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  args[0] = core_index(c, CORE_VAR, 0);
+  for (j = 0; j < n; j++) {
+    const Value *x = val_nat(c->m, j);
+    if (!push_value(c, t->name, hint->dom, x))
+      return NULL;
+    args[j + 1u] = check(c, t->right, closure_apply(c->m, hint, x));
+    pop(c);
+    if (args[j + 1u] == NULL) {
+      code = c->m->diag->code != NULL ? c->m->diag->code : "-";
+      if (strcmp(code, "OOM") == 0)
+        return NULL;
+      snprintf(inner, sizeof inner, "%s", c->m->diag->msg);
+      *c->m->diag = clean;
+      return nul(FAIL(c, "FIN_CASE", "the case %llu of Fin %llu fails: %s: %s", (unsigned long long)j, (unsigned long long)n, code, inner));
+    }
+  }
+  return core_op(c, OP_FIN_CASE, 0, 0, args, (uint32_t)n + 1u);
+}
+
 static const Core *check_lam(Checker *c, const Term *t, const Value *hint, const Value **type) {
   const Core *body;
+  Diag clean;
   if (hint->kind == VAL_PATHP)
     return check_plam(c, t, hint, type);
   if (hint->kind != VAL_PI)
     return nul(FAIL(c, "TYPE_MISMATCH", "a function is not a term of type %s", show(c, hint)));
   if (t->left != NULL && !annotation_ok(c, t->left, hint->dom))
     return NULL;
+  clean = *c->m->diag;
   if (!push(c, t->name, hint->dom))
     return NULL;
   body = check(c, t->right, closure_apply(c->m, hint, c->env->value));
   pop(c);
+  /* finAll: the ordinary check failed on a Fin n domain (literal n), so
+     check each case. The ordinary core stays when the ordinary check passes. */
+  if (body == NULL && fin_cases(hint->dom) > 0 && strcmp(c->m->diag->code != NULL ? c->m->diag->code : "-", "OOM") != 0) {
+    *c->m->diag = clean;
+    body = check_fin_all(c, t, hint, fin_cases(hint->dom));
+  }
   *type = hint;
   return core_bind(c, CORE_LAM, t->name, NULL, body);
 }
@@ -2271,6 +2503,12 @@ static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, cons
   case TERM_NAT:
     if (!literal_ok(c, "a Nat literal"))
       return NULL;
+    if (val_is(hint, OP_FIN) && hint->args[0]->kind == VAL_NAT) {
+      if (t->nat >= hint->args[0]->nat)
+        return nul(FAIL(c, "FIN_RANGE", "the literal %llu is not below %llu, so it is not a value of Fin %llu", (unsigned long long)t->nat, (unsigned long long)hint->args[0]->nat, (unsigned long long)hint->args[0]->nat));
+      *type = hint;
+      return core_leaf(c, CORE_NAT, t->nat);
+    }
     *type = nat_type(c);
     return finish(c, core_leaf(c, CORE_NAT, t->nat), hint, type);
   case TERM_WORD:
@@ -3179,7 +3417,7 @@ int eval_command(Machine *m, const char *name, char *const *args, int arg_count,
     if (buf == NULL)
       return diag_fail(m->diag, "OOM", name, "out of memory") + 1;
     if (!value_print(m, NULL, 0, v, buf, PRINT_MAX)) {
-      diag_fail(m->diag, "EVAL_PRINT", name, "the normal form exceeds the printer limits");
+      diag_fail(m->diag, "EVAL_PRINT", name, "the normal form cannot be printed as source syntax");
       return 1;
     }
     fprintf(out, "%s\n", buf);
