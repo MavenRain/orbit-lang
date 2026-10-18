@@ -86,3 +86,7 @@ elim bagSwapE => fun i => swap Size sz0 (szS sz0) (szS (szS sz0)) (bagNil Size) 
 elim quotThree => trunc0 Nat 2
 elim quotEqAt => fun i => trunc0 Nat 2
 elim hcompE => fun j => elim (fun m => fun c => Bag Size m) (bagNil Size) (fun k => fun h => fun t => fun ih => bagCons Size k (szS h) ih) (fun k => fun h => fun g => fun t => fun ih => fun i => swap Size k (szS h) (szS g) ih i) (fun k => fun x => fun ihx => fun y => fun ihy => fun p => fun ihp => fun q => fun ihq => fun i => fun x1 => bagSquash Size k ihx ihy ihp ihq i x1) (hcomp (Bag Size (szS (szS sz0))) (j \/ ~j) (fun i => [ ~j -> bagCons Size (szS sz0) sz0 (bagCons Size sz0 (szS sz0) (bagNil Size)), j -> swap Size sz0 sz0 (szS sz0) (bagNil Size) i ]) (bagCons Size (szS sz0) sz0 (bagCons Size sz0 (szS sz0) (bagNil Size))))
+dao tallied => inr unit
+dao flippedTally => inr unit
+dao nextRule => inl unit
+dao amended => inr unit

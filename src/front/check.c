@@ -3619,6 +3619,8 @@ static const SigRow SIGNATURE[] = {
   {"Ballot_priv", SIG_TYPE, SIG_PRIMITIVE},
   {"orbitProj", SIG_OP, SIG_DEFINED},
   {"act", SIG_OP, SIG_SLOT},
+  {"outcomeSet", SIG_OP, SIG_SLOT},
+  {"menu", SIG_OP, SIG_SLOT},
   {"aggregate", SIG_OP, SIG_DEFINED},
   {"gov", SIG_OP, SIG_DEFINED},
   {"amend", SIG_OP, SIG_DEFINED},
@@ -3638,37 +3640,96 @@ static const Term SIG_CONFIG = {TERM_PI, 0, 0, NULL, 0, NULL, &SIG_MEMBER, &SIG_
 static const Term SIG_STEP = {TERM_PI, 0, 0, NULL, 0, NULL, &SIG_CONFIG, &SIG_CONFIG};
 static const Term SIG_ACT = {TERM_PI, 0, 0, NULL, 0, NULL, &SIG_GROUP, &SIG_STEP};
 
+/* The slot types of outcomeSet (USER ruling S7 Q2) and menu (Q3). */
+static const Term SIG_OUTCOME = {TERM_VAR, 0, 0, "Outcome", 0, NULL, NULL, NULL};
+static const Term SIG_IS_SET = {TERM_VAR, 0, 0, "isSet", 0, NULL, NULL, NULL};
+static const Term SIG_OUTCOME_SET = {TERM_APP, 0, 0, NULL, 0, NULL, &SIG_IS_SET, &SIG_OUTCOME};
+static const Term SIG_CONSTITUTION = {TERM_VAR, 0, 0, "Constitution", 0, NULL, NULL, NULL};
+static const Term SIG_MENU = {TERM_PI, 0, 0, NULL, 0, NULL, &SIG_OUTCOME, &SIG_CONSTITUTION};
+
+/* An op slot: its slot type, the program slots and the kernel name that the
+   type uses (a slot is checked only after them, so the check of its type
+   meets no unknown name), and the type as the refusal shows it. */
+typedef struct {
+  const char *name;
+  const Term *type;
+  const char *program[3];
+  const char *kernel;
+  const char *shown;
+} OpSlot;
+
+static const OpSlot OP_SLOTS[] = {
+  {"act", &SIG_ACT, {"Member", "Choice", "Group"}, NULL, "Group -> (Member -> Choice) -> Member -> Choice, after Member, Choice and Group"},
+  {"outcomeSet", &SIG_OUTCOME_SET, {"Outcome", NULL, NULL}, NULL, "isSet Outcome, after Outcome"},
+  {"menu", &SIG_MENU, {"Outcome", NULL, NULL}, "Constitution", "Outcome -> Constitution, after Outcome and the DAO prelude"}
+};
+
+#define OP_SLOT_COUNT ((uint32_t)(sizeof OP_SLOTS / sizeof OP_SLOTS[0]))
+
+static uint32_t sig_row(const char *name) {
+  uint32_t i;
+  for (i = 0; i < SIG_COUNT && strcmp(SIGNATURE[i].name, name) != 0; i++)
+    ;
+  return i;
+}
+
+static const OpSlot *op_slot(const char *name) {
+  uint32_t i;
+  for (i = 0; i < OP_SLOT_COUNT && strcmp(OP_SLOTS[i].name, name) != 0; i++)
+    ;
+  return i == OP_SLOT_COUNT ? NULL : &OP_SLOTS[i];
+}
+
+static const char *slot_shown(const SigRow *row) {
+  const OpSlot *s;
+  switch (row->sort) {
+  case SIG_TYPE:
+    return "Type 0";
+  case SIG_OP:
+    break;
+  }
+  s = op_slot(row->name);
+  return s == NULL ? "an op slot type" : s->shown;
+}
+
 static int program_def(const Machine *m, const char *name) {
   uint32_t i = find_def(m, name);
   return i != NO_DEF && m->defs[i].origin == ORIGIN_PROGRAM;
 }
 
-/* TV is the slot type of ROW: Type 0 for a type slot; for act, the slot type
-   after the program definitions of Member, Choice and Group. */
+/* TV is the slot type of ROW: Type 0 for a type slot; for an op slot, the
+   type of OP_SLOTS after the program slots and the kernel name it uses. */
 static int slot_ok(Checker *c, const SigRow *row, const Value *tv) {
   uint64_t level = 0;
+  const OpSlot *s;
   const Core *t;
+  uint32_t i;
   switch (row->sort) {
   case SIG_TYPE:
     return conv_values(c->m, c->level, tv, val_univ(c->m, 0u));
   case SIG_OP:
     break;
   }
-  if (!program_def(c->m, "Member") || !program_def(c->m, "Choice") || !program_def(c->m, "Group"))
+  s = op_slot(row->name);
+  if (s == NULL)
     return 0;
-  t = check_type(c, &SIG_ACT, &level);
+  for (i = 0; i < 3u && s->program[i] != NULL; i++) {
+    if (!program_def(c->m, s->program[i]))
+      return 0;
+  }
+  if (s->kernel != NULL && find_def(c->m, s->kernel) == NO_DEF)
+    return 0;
+  t = check_type(c, s->type, &level);
   return t != NULL && conv_values(c->m, c->level, tv, here(c, t));
 }
 
 static int check_sig(Checker *c, const Decl *d, const Value *tv) {
-  uint32_t i;
-  for (i = 0; i < SIG_COUNT && strcmp(SIGNATURE[i].name, d->name) != 0; i++)
-    ;
+  uint32_t i = sig_row(d->name);
   if (d->origin != ORIGIN_PROGRAM || i == SIG_COUNT)
     return 1;
   switch (SIGNATURE[i].kind) {
   case SIG_SLOT:
-    return slot_ok(c, &SIGNATURE[i], tv) ? 1 : FAIL(c, "REFUSE_SIG", "the slot %s must have the type %s", d->name, SIGNATURE[i].sort == SIG_TYPE ? "Type 0" : "Group -> (Member -> Choice) -> Member -> Choice, after Member, Choice and Group");
+    return slot_ok(c, &SIGNATURE[i], tv) ? 1 : FAIL(c, "REFUSE_SIG", "the slot %s must have the type %s", d->name, slot_shown(&SIGNATURE[i]));
   case SIG_DEFINED:
   case SIG_PRIMITIVE:
     break;
@@ -3676,13 +3737,23 @@ static int check_sig(Checker *c, const Decl *d, const Value *tv) {
   return FAIL(c, "REFUSE_SIG", "%s is a %s name of the design signature (PLAN section 3), reserved until a later slice gives it", d->name, SIGNATURE[i].kind == SIG_DEFINED ? "defined" : "primitive");
 }
 
-/* The kernel gives Orbit and orbitProj after act (orbit-lang S4, PLAN
-   section 8). A program definition of either name is REFUSE_SIG, before the
-   name check, so the code is the same before and after act. */
+/* The kernel gives each defined name of the design signature: Orbit and
+   orbitProj after act (orbit-lang S4), the DAO prelude after the last of
+   act and outcomeSet (S7, PLAN section 8). A program declaration of a
+   defined name is REFUSE_SIG, before the name check, so the code is the
+   same before and after the kernel gives it. */
 static int kernel_sig(Checker *c, const Decl *d) {
-  if (d->origin != ORIGIN_PROGRAM || (strcmp(d->name, "Orbit") != 0 && strcmp(d->name, "orbitProj") != 0))
+  uint32_t i = sig_row(d->name);
+  if (d->origin != ORIGIN_PROGRAM || i == SIG_COUNT)
     return 1;
-  return FAIL(c, "REFUSE_SIG", "%s is a defined name of the design signature (PLAN section 3); the kernel gives it after act", d->name);
+  switch (SIGNATURE[i].kind) {
+  case SIG_DEFINED:
+    return FAIL(c, "REFUSE_SIG", "%s is a defined name of the design signature (PLAN section 3); the kernel gives it (Orbit and orbitProj after act, the DAO prelude after act and outcomeSet)", d->name);
+  case SIG_SLOT:
+  case SIG_PRIMITIVE:
+    break;
+  }
+  return 1;
 }
 
 static int check_def(Checker *c, const Decl *d) {

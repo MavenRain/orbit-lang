@@ -19,29 +19,70 @@ static const char orbit_source[] =
   "def Orbit : Type 0 := Quot (Member -> Choice) " ORBIT_R "\n"
   "def orbitProj : (Member -> Choice) -> Orbit := fun (c : Member -> Choice) => quot (Member -> Choice) " ORBIT_R " c\n";
 
-/* When the program from FIRST on defines act, put Orbit and orbitProj
-   directly after it, with the trusted origin ORIGIN_DOMAIN. Check order is
-   declaration order, so a refused act stops before them. */
-static int orbit_after_act(Arena *arena, size_t first, DeclList *out, Diag *diag) {
-  DeclList orbit = {NULL, 0, 0};
-  Decl *items;
+/* The DAO prelude as kernel declarations (orbit-lang S7, PLAN section 8):
+   the defined names of the design signature after Orbit. aggregate is the
+   Quot fold of the rule of a constitution, with the outcomeSet slot as its
+   quotSquash case, so the prelude needs the slot. R is inline, as above. */
+#define DAO_SOURCE_NAME "kernel/dao.lang"
+
+static const char dao_source[] =
+  "def Config : Type 0 := Member -> Choice\n"
+  "def Constitution : Type 0 := Sigma (F : Config -> Outcome) ((g : Group) -> (c : Config) -> Path Outcome (F (act g c)) (F c))\n"
+  "def Aggregation : Type 0 := Orbit -> Outcome\n"
+  "def Tally : Type 0 := Orbit\n"
+  "def aggregate : Constitution -> Aggregation := fun (F : Constitution) (z : Orbit) => fold (witness F)\n"
+  "  (fun (a : Config) (b : Config) (r : Sigma (g : Group) (Path Config (act g b) a)) =>\n"
+  "    trans Outcome (witness F a) (witness F (act (witness r) b)) (witness F b) (sym (cong (witness F) (payload r))) (payload F (witness r) b))\n"
+  "  outcomeSet z\n"
+  "def gov : Aggregation -> Constitution := fun (L : Aggregation) => pack (fun (c : Config) => L (orbitProj c))\n"
+  "  (fun (g : Group) (c : Config) => fun (i : I) => L (quotEq (Member -> Choice) " ORBIT_R " (act g c) c (pack g refl) i))\n"
+  "def amend : Aggregation -> Aggregation := fun (L : Aggregation) => aggregate (gov L)\n";
+
+/* The first definition named NAME in OUT from FIRST on, or OUT->count. */
+static size_t def_at(const DeclList *out, size_t first, const char *name) {
   size_t at;
-  for (at = first; at < out->count && (out->items[at].kind != DECL_DEF || strcmp(out->items[at].name, "act") != 0); at++)
+  for (at = first; at < out->count && (out->items[at].kind != DECL_DEF || strcmp(out->items[at].name, name) != 0); at++)
     ;
-  if (at == out->count)
-    return 1;
-  if (!load_one(arena, ORBIT_SOURCE_NAME, ORIGIN_DOMAIN, orbit_source, sizeof orbit_source - 1u, &orbit, diag))
+  return at;
+}
+
+/* When OUT from FIRST on defines each of the COUNT names AFTER, put the
+   kernel declarations of TEXT directly after the last of them, with the
+   trusted origin ORIGIN_DOMAIN. Check order is declaration order, so a
+   refused slot stops before them. */
+static int splice_after(Arena *arena, size_t first, const char *const *after, size_t count, const char *source, const char *text, size_t len, DeclList *out, Diag *diag) {
+  DeclList kernel = {NULL, 0, 0};
+  Decl *items;
+  size_t at = first;
+  size_t i;
+  for (i = 0; i < count; i++) {
+    size_t k = def_at(out, first, after[i]);
+    if (k == out->count)
+      return 1;
+    at = k > at ? k : at;
+  }
+  if (!load_one(arena, source, ORIGIN_DOMAIN, text, len, &kernel, diag))
     return 0;
-  items = arena_alloc(arena, (out->count + orbit.count) * sizeof *items);
+  items = arena_alloc(arena, (out->count + kernel.count) * sizeof *items);
   if (items == NULL)
     return 0;
   memcpy(items, out->items, (at + 1u) * sizeof *items);
-  memcpy(items + at + 1u, orbit.items, orbit.count * sizeof *items);
-  memcpy(items + at + 1u + orbit.count, out->items + at + 1u, (out->count - at - 1u) * sizeof *items);
+  memcpy(items + at + 1u, kernel.items, kernel.count * sizeof *items);
+  memcpy(items + at + 1u + kernel.count, out->items + at + 1u, (out->count - at - 1u) * sizeof *items);
   out->items = items;
-  out->count += orbit.count;
+  out->count += kernel.count;
   out->cap = out->count;
   return 1;
+}
+
+static const char *const ORBIT_AFTER[] = {"act"};
+static const char *const DAO_AFTER[] = {"orbitProj", "outcomeSet"};
+
+/* Orbit and orbitProj go directly after act. The DAO prelude goes after the
+   last of orbitProj (so after act) and outcomeSet. */
+static int orbit_after_act(Arena *arena, size_t first, DeclList *out, Diag *diag) {
+  return splice_after(arena, first, ORBIT_AFTER, 1u, ORBIT_SOURCE_NAME, orbit_source, sizeof orbit_source - 1u, out, diag)
+      && splice_after(arena, first, DAO_AFTER, 2u, DAO_SOURCE_NAME, dao_source, sizeof dao_source - 1u, out, diag);
 }
 
 int front_load(Arena *arena, const char *source, const char *text, size_t len, DeclList *out, Diag *diag) {
