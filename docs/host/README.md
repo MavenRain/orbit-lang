@@ -100,7 +100,7 @@ state State := makeState (owner : Addr) (held : U256) history (earned : U256) (c
 - The word `history` marks each field of the next `(...)` group as a history field. A history field must have the type `Nat` or `U256`.
 - `history` is not a reserved word. It has this function only in the field list of a state.
 - Each field name is a projection, as in a family. For example, `held s` is the `held` field of the state `s`.
-- If a state does not obey these rules, the checker gives `REFUSE_STATE`. A `family` in a program is still `REFUSE_DATA`.
+- If a state does not obey these rules, the checker gives `REFUSE_STATE`. A `family` in a program is still `REFUSE_DATA`. An index telescope and an `and` block are also for `domain/domain.lang` only (orbit-lang S6). A state with an index telescope gives `REFUSE_STATE`.
 
 The type of a definition gives its role. There is no keyword for a role.
 

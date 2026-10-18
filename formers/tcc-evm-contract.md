@@ -1,7 +1,7 @@
 # Formers on the tcc-evm-contract host
 
 The front end of this kit is a copy of the tcc-wasm front end. `langc check`
-and `langc eval` accept the formers F1 to F15 as that front end does, F16 (`elim`) and F17 (`Glue`, `glue`, `unglue`).
+and `langc eval` accept the formers F1 to F15 as that front end does, F16 (`elim`), F17 (`Glue`, `glue`, `unglue`), F18 (indexed families) and F19 (`and` blocks).
 `test/gate.sh` runs the examples on them.
 
 In orbit-lang S3, the kit examples and contract operations below require
@@ -36,7 +36,7 @@ section `EVM output`). The facts a program author needs:
   such as a sum over a closed `cons` chain, can build.
 - `pay` and `pull` are token CALLs (K4d). `emit` has no EVM form: use a
   named event.
-- The formers F1 to F17 are checked and evaluated (F12 and F13 as `Path`
+- The formers F1 to F19 are checked and evaluated (F12 and F13 as `Path`
   since sealed-lang S3). On the EVM only the first-order word residual of a body
   lowers. A residual of another form gives REFUSE_LOWER
   (`test/lower/expect.txt`, 16 rows).
@@ -80,7 +80,7 @@ refusal of a remaining hcomp at a word position (`test/lower/path-word.lang`).
 
 | Form | `check` and `eval` | EVM | Test |
 |---|---|---|---|
-| Path constructor | DONE: a `family` constructor with interval fields `(i : I)` and a boundary system; each boundary is checked (HIT_BOUNDARY). A constructor of dimension 2 (squash0, quotSquash) has path fields. At an end it reduces to its boundary; at a neutral interval it stays neutral. No rule makes `loop` equal to `refl`. | A point constructor value lowers as a family value. A path constructor residual is not a word: REFUSE_LOWER (R31). | `examples/circle.lang`; PATH_UIP row `loop-not-refl.lang`; fronttool `domain` rows (HIT_BOUNDARY); DOMAIN_FAMILY row `state-boundary.lang`; pathtool "path constructor at a neutral interval". |
+| Path constructor | DONE: a `family` constructor with interval fields `(i : I)` and a boundary system; each boundary is checked (HIT_BOUNDARY). A constructor of an indexed family states its result index, and each end of its boundary is at that index (HIT_INDEX, orbit-lang S6). A constructor of dimension 2 (squash0, quotSquash) has path fields. At an end it reduces to its boundary; at a neutral interval it stays neutral. No rule makes `loop` equal to `refl`. | A point constructor value lowers as a family value. A path constructor residual is not a word: REFUSE_LOWER (R31). | `examples/circle.lang`; PATH_UIP row `loop-not-refl.lang`; fronttool `domain` rows (HIT_BOUNDARY); DOMAIN_FAMILY row `state-boundary.lang`; pathtool "path constructor at a neutral interval". |
 | `fold` over a HIT | DONE: one case for each path constructor, at the type of its boundary. A fold of Trunc0 or Quot needs the isSet case. `fold_path` applies the path case at the interval; `fold_hcomp` maps to `hcomp` on the target type (R33); `fold_square` folds the path fields of a square. | At an end the fold gives the point case. A stuck `hcomp` on a word type gives REFUSE_LOWER. | TYPE_MISMATCH rows `fold-missing-path.lang`, `trunc0-no-set.lang`; PATH_END row `fold-path-boundary.lang`; the eval rows `trunc truncMapped`, `quot toTrunc3`; `test/lower/loop-word.lang`; pathtool "fold boundary maps a point constructor path field", "fold square boundary preserves captured intervals in path fields". |
 | `hcomp` at a HIT | DONE: a composite of path constructor values is a formal hcomp (a canonical value). | Erased. REFUSE_LOWER at a word position. | `examples/circle.lang` `loop2`; pathtool "formal hcomp at a HIT". |
 | `transp` at a HIT | DONE: the identity at a family with no parameters. Along a parameter line `transp_family` reduces and keeps a boundary that depends on the parameter; squash0 stays stuck. | Erased. | `examples/circle.lang` `transpBase`; PATH_UIP row `squash0-not-rebuild.lang`; pathtool "transport of a formal hcomp at Trunc1 along a parameter line", "transport preserves a parameter-dependent HIT boundary", "transport of squash0 along a parameter line stays stuck". |
@@ -89,3 +89,16 @@ Sealed-lang S4 adds no BUILTINS row (66). The families S1, Trunc1, Trunc0 and Qu
 are in `domain/domain.lang` (R32). `build/pathtool` does 26 quote and
 parse roundtrips. The EVM regressions did not change at any sealed-lang S4 step (evm
 43, diff 15, emit 24, runs 5, run refusals 10): a HIT value is erased.
+
+## Indexed families and blocks (orbit-lang S6)
+
+| Form | `check` and `eval` | EVM | Test |
+|---|---|---|---|
+| Index telescope | DONE: `family D (p : P) : J -> Type 0` in `domain/domain.lang`. Each constructor states its result. A constructor with no result, a result with a wrong head or an end at another index gives HIT_INDEX. `Prop` in the telescope gives NAME_UNKNOWN. | Erased. | `examples/hiit.lang`; fronttool `domain` rows `hiit-wrong-index`, `hiit-no-result`, `hiit-wrong-head` (HIT_INDEX), `index-prop` (NAME_UNKNOWN). |
+| `and` block | DONE: the headers bind first, then the point constructors, then the path constructors of all sorts. A header that names its own sort or a later sort gives BLOCK_ORDER. | Erased. | `examples/qiit.lang`; fronttool `domain` rows `block-order` (BLOCK_ORDER), `block-ok`. |
+| `fold` over an indexed sort or a block | DONE: one constant target for an indexed sort. For a block: one target for each sort, the cases sort by sort in declaration order, then the value. The parameters of the scrutinee must inhabit the telescope of each sort. A field of another sort folds at the target of that sort. `transp` at an indexed or block sort stays neutral. | Erased. | TYPE_MISMATCH rows `bag-no-squash.lang`, `block-fold-target.lang`, `block-fold-no-squash.lang`; fronttool rows `block-fold-extra` and Even/Odd; the eval rows `hiit bagTwoCount`, `bagSwapCount`, `qiit adoptedZero`, `adoptedTwo`, `adoptedLaw`. |
+
+The families Size, Bag, Charter and Ratified are in `domain/domain.lang`
+(lines 50 to 78). The EVM regressions do not change in orbit-lang S6 (evm
+43, diff 15, emit 24, runs 5, run refusals 10, lower refusals 16): a value
+of an indexed or block sort is erased.

@@ -265,7 +265,7 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
 - Laws: where the key of the branch `pack T e` holds, `Glue A phi sys = T`,
   `glue sys a = t` and `unglue g = witness e g`. `unglue (glue sys a) = a`.
 - Univalence: the domain definitions `isContr`, `fiber`, `isEquiv`, `Equiv`,
-  `idEquiv`, `isoToEquiv`, `ua` and `uaArrow` (`domain/domain.lang:50-113`).
+  `idEquiv`, `isoToEquiv`, `ua` and `uaArrow` (`domain/domain.lang:80-142`).
   `Equiv A B` is `Sigma (f : A -> B) (isEquiv A B f)`. `isoToEquiv A B f g s t
   : Equiv A B` makes an equivalence from an isomorphism. `ua A B e :
   Path (Type 0) A B` is the Glue line `Glue B (~i \/ i) [ ~i -> pack A e,
@@ -278,6 +278,71 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
   `hcomp` at a Glue type composes in the base type. `elim` reduces when
   that composition gives a constructor and stays neutral when it remains
   stuck (`docs/PLAN.md` O22, `examples/orbit.lang` `gElim`).
+
+### F18 Indexed higher inductive family (HIIT)
+
+- Formation: `family D (p : P) : J1 -> ... -> Jk -> Type 0 := ...` in
+  `domain/domain.lang` only (kit rule R1). The type after `:` is the index
+  telescope: a Pi telescope that ends in `Type 0`. Its depth is the index
+  count. A family without `:` is uniform, as before. `Prop` and `SProp` in
+  the telescope give `NAME_UNKNOWN` (reserved, rule R4).
+- Introduction: each constructor states its result after its fields, and a
+  path constructor states it after its interval fields and before its
+  boundary: `bagNil : Bag A sz0`, `bagCons (n : Size) (a : A) (t : Bag A n)
+  : Bag A (szS n)`. A constructor with no result, a result whose head is
+  not the family at its parameters, or an end of a path constructor at
+  another index gives `HIT_INDEX`. An application takes the parameters and
+  the fields; the index comes from the result.
+- Elimination: `fold T c1 ... cn x : T` when `x : D p j`. The target `T` is
+  a constant type from the hint, as for a uniform family. A case takes the
+  fields: a recursive field at any index becomes `T`, and an index field
+  stays. A wrong case count or a missing squash case gives `TYPE_MISMATCH`.
+- Laws: at each index, the fold of a point constructor is its case at the
+  folded fields, the fold of a path constructor is its case at the
+  interval (`fold_path`), and the fold of a square is its case at both
+  intervals (`fold_square`). The fold of a formal hcomp at an indexed sort
+  is an hcomp at the target. `transp` at an indexed sort stays neutral
+  (`docs/PLAN.md` section 8, B2 safety).
+- Sets: a sort is a set only by a 2-dimensional squash constructor at each
+  index, in the form of Trunc0 squash0. No conversion makes a sort a set
+  (`PATH_UIP`).
+- Examples: `Size` and `Bag A n` (`domain/domain.lang:50-63`). `Bag A n` is
+  the lists of n elements of A up to a swap of the first two (`swap`), and
+  `bagSquash` makes it a set at each index. `examples/hiit.lang` folds a
+  bag into `Trunc0 Size` (`bagCount`, `bagTwoCount`, `bagSwapCount`).
+
+### F19 Inductive-inductive block (QIIT)
+
+- Formation: `family A (p : P) := ... and B (p : P) : A p -> Type 0 := ...`
+  in `domain/domain.lang` only. The keyword `and` joins the sorts of a
+  block. All headers of a block bind first, then the point constructors of
+  all sorts, then the path constructors of all sorts. Thus a field can
+  name a later sort and a boundary can name a point constructor of a later
+  sort. A header (its parameters or its index types) that names its own
+  sort or a later sort of the block gives `BLOCK_ORDER`.
+- Introduction: the constructors of each sort, as in F18 for an indexed
+  sort. The head of a recursive field is a sort of the block at its
+  parameters (`DOMAIN_FAMILY` otherwise). A recursive field can be the
+  index of a later recursive field: `adopt (c : Charter R) (r : Ratified R
+  c)`.
+- Elimination: `fold T1 ... Tn c1 ... cm x : Ti` when `x` is a value of the
+  sort i of a block of n sorts. The first n arguments are the target
+  types, one for each sort in declaration order. Then come the cases, one
+  for each constructor of each sort, sort by sort in declaration order.
+  The value is the last argument. The sorts share the parameter telescope
+  of the scrutinee: its parameters must inhabit the telescope of each
+  sort. A wrong argument count, a missing case or a parameter mismatch
+  gives `TYPE_MISMATCH`. A one-sort family keeps the hint form of F6.
+- Laws: the fold of a constructor of the sort i is its case at the folded
+  fields. A field of the sort j folds with the same cases at `Tj`. A path
+  field folds at the sort under the path. The path and square laws of F18
+  hold at each sort. `transp` at a sort of a block stays neutral.
+- Examples: `Charter R` and `Ratified R c` (`domain/domain.lang:64-78`):
+  `genesis`, `adopt`, `ratify`, the path constructor `adoptTwice` (law 4
+  in the type: a second adoption of the same rule is a path from the
+  first) and the squash constructors `charterSquash` and `ratifiedSquash`.
+  `examples/qiit.lang` folds a charter into `Trunc0 Size` (`adopted`,
+  `adoptedZero`, `adoptedTwo`, `adoptedLaw`).
 
 ### Kit note: Fin
 
@@ -351,5 +416,6 @@ changes, update the host file and this matrix in the same change.
 | S2 | Precompile | n/a | n/a | n/a | DONE in `check` and `eval` as opaque operations (a closed curve application stays stuck): `examples/precompile.lang`. DONE: EVM output, one STATICCALL per execution of a lowered curve statement (`src/lower.c` lower_curve, `src/evm.c` IR_STMT_PRECOMPILE); `test/precompile.sh` 18 steps; `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | S3 | Paths and Kan operations | n/a | n/a | n/a | DONE in `check` and `eval`: `I`, `i0`, `i1`, `PathP`, `Path`, `refl`, `sym`, `cong`, `funExt` (check only, R29), `transp` and `hcomp` (base lines Nat, Flag, U256, Addr, Unit and Map, R27; the `m->fuel` budget, R28); the guest defs `transport`, `subst`, `J`, `JRefl` and `trans` (`domain/domain.lang:8-21`, R25): `examples/paths.lang`, `examples/kan.lang`; `build/pathtool` 19 roundtrips. EVM output: erased; a path residual at a word position gives REFUSE_LOWER (`test/lower/path-word.lang`, R24); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | S4 | HITs and QITs | n/a | n/a | n/a | DONE in `check` and `eval`: a `family` constructor with interval fields and a boundary system (HIT_BOUNDARY); `fold` with one case for each path constructor (a fold of Trunc0 or Quot needs the isSet case); the end rule, the formal hcomp at a HIT and `transp` along a family parameter line; S1, Trunc1, Trunc0 and Quot with isProp and isSet (`domain/domain.lang:26-49`, R32): `examples/circle.lang`, `examples/trunc.lang`, `examples/quot.lang`; `build/pathtool` 26 roundtrips. EVM output: erased; a path constructor residual or a formal hcomp at a word position gives REFUSE_LOWER (`test/lower/loop-word.lang`, R31); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| S5 | Glue and univalence | n/a | n/a | n/a | DONE in `check` and `eval`: `Glue`, `glue` and `unglue` (VIS_GUEST) with SYSTEM_COVER, GLUE_BINDER, GLUE_EQUIV, GLUE_BOUNDARY and UNGLUE_TYPE; `hcomp` at a Glue type and at `Type 0` (HCOMP_UNIVERSE above `Type 0`); the guest defs `isContr`, `fiber`, `isEquiv`, `Equiv`, `idEquiv`, `isoToEquiv`, `ua` and `uaArrow` (`domain/domain.lang:50-113`); `Fin`, `finAdd` and `finNeg` VIS_INTERNAL (O23): `examples/equiv.lang`, `examples/glue.lang`, `examples/univ.lang`, `examples/orbit.lang`; `build/pathtool` 38 rows. EVM output: erased; the `unglue` of an `hcomp` at a Glue type over a word gives REFUSE_LOWER (`test/lower/glue-word.lang`, O22); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| S5 | Glue and univalence | n/a | n/a | n/a | DONE in `check` and `eval`: `Glue`, `glue` and `unglue` (VIS_GUEST) with SYSTEM_COVER, GLUE_BINDER, GLUE_EQUIV, GLUE_BOUNDARY and UNGLUE_TYPE; `hcomp` at a Glue type and at `Type 0` (HCOMP_UNIVERSE above `Type 0`); the guest defs `isContr`, `fiber`, `isEquiv`, `Equiv`, `idEquiv`, `isoToEquiv`, `ua` and `uaArrow` (`domain/domain.lang:80-142`); `Fin`, `finAdd` and `finNeg` VIS_INTERNAL (O23): `examples/equiv.lang`, `examples/glue.lang`, `examples/univ.lang`, `examples/orbit.lang`; `build/pathtool` 38 rows. EVM output: erased; the `unglue` of an `hcomp` at a Glue type over a word gives REFUSE_LOWER (`test/lower/glue-word.lang`, O22); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| S6 | HIITs and QIITs | n/a | n/a | n/a | DONE in `check` and `eval`: an index telescope and constructor results on a domain `family` (HIT_INDEX); `and` blocks of sorts (BLOCK_ORDER); `fold` over an indexed sort with a constant target, and over a block with one target for each sort, the cases sort by sort in declaration order and the value (TYPE_MISMATCH for a wrong count, a missing squash case or a parameter mismatch); `transp` at an indexed or block sort stays neutral; Size, Bag, Charter and Ratified (`domain/domain.lang:50-78`): `examples/hiit.lang`, `examples/qiit.lang`; fronttool `domain` rows. EVM output: erased, no new lowering (16 lower refusals); `formers/tcc-evm-contract.md` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | K4a0 | Map | n/a | n/a | n/a | DONE in `check`, `eval` and EVM output: `mapEmpty`, `mapGet`, `mapSet` over word keys and word values, one storage slot per key at keccak256(key . slot): `examples/map.lang`, `docs/host/README.md` section `Maps` | n/a | n/a | n/a | n/a | n/a | n/a | n/a |

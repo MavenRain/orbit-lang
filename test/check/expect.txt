@@ -146,3 +146,5 @@ glue-prop.lang NAME_UNKNOWN
 isequiv-two-proofs.lang PATH_END
 ua-two-proofs.lang PATH_UIP
 bag-no-squash.lang TYPE_MISMATCH
+block-fold-target.lang TYPE_MISMATCH
+block-fold-no-squash.lang TYPE_MISMATCH

@@ -11,7 +11,7 @@ there. Delete the quoted line when the section is complete.
 > it writes. Name the host and the target. Say that the core types and core
 > operations are only those of `design/DESIGN.md`.
 
-orbit-lang is a language for <the domain>. Its type formers are F1 to F17 of
+orbit-lang is a language for <the domain>. Its type formers are F1 to F19 of
 `formers/FORMERS.md`. Its core data types and core operations are only the
 types and operations of `design/DESIGN.md` (the design).
 
@@ -33,13 +33,32 @@ a prelude name. Thus a program cannot add a data type, an unproved fact or
 general recursion. Recursion comes only from `fold` and `unfold` (F6, F7).
 The compiler writes the target; a program cannot.
 
+Only `domain/domain.lang` declares a family; a `family` in a program gives
+`REFUSE_DATA`. A domain family can have an index telescope after its
+parameters: `family Bag (A : Type 0) : Size -> Type 0 := ...`, a Pi
+telescope that ends in `Type 0`. Each constructor of an indexed family
+states its result after its fields: `bagNil : Bag A sz0`. A path
+constructor states it after its interval fields and before its boundary.
+A constructor with no result, a result whose head is not the family at its
+parameters, or an end of a path constructor at another index gives
+`HIT_INDEX`. The keyword `and` joins the sorts of an inductive-inductive
+block: `family Charter (R : Type 0) := ... and Ratified (R : Type 0) :
+Charter R -> Type 0 := ...`. The headers bind first, then the point
+constructors of all sorts, then the path constructors. A header that names
+its own sort or a later sort of its block gives `BLOCK_ORDER`. A fold over
+an indexed family has one constant target, as a fold over a uniform family
+does. A fold over a block of n sorts takes n target types (one for each
+sort in declaration order), then one case for each constructor of each
+sort (sort by sort, in declaration order), then the value. The sorts share
+the parameter telescope of the scrutinee (F18, F19).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
 > Give each former whose status in `formers/tcc-evm-contract.md` is not DONE, and the
 > open item (section 9) that records it.
 
-The type formers are F1 to F17 of `formers/FORMERS.md`. This language uses
+The type formers are F1 to F19 of `formers/FORMERS.md`. This language uses
 the tcc-evm-contract column of the realization matrix. `formers/tcc-evm-contract.md` gives
 the host form of each former.
 

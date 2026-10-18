@@ -539,3 +539,149 @@ Builder deaths: none. S5 called no builder (the USER route of S2 to
 S4). The main loop did the work by hand: B1 to B5 in sessions 3 to 5,
 the mutant run in session 5, and this section and the gate in session
 6.
+
+## S6
+
+Slice S6 (HIITs and QIITs, PLAN section 8) is complete on commit 8dd82a3
+plus the B4 changes. S6 is new work in this lineage (O2 (a));
+zkpolicy-lang a1780a9 and f176ac6 are a design reference only. USER
+commit 6fa6a15 holds B1 (the keyword `and`, the index telescope, the
+constructor result and the block in the parser and the AST) and B2 (the
+indices of FamilyInfo, the result index of CtorInfo, HIT_INDEX,
+BLOCK_ORDER, Size and Bag) with the USER B2 safety fixes. USER commit
+8dd82a3 holds B3 (indexed and block folds in check and eval, Charter and
+Ratified, `examples/hiit.lang` and `examples/qiit.lang`, 5 eval rows)
+with the USER fixes. B4 adds 6 rows, the mutant run (M3b and 8 S6
+mutants) and the records. Size, Bag, Charter and Ratified are domain
+families (ORIGIN_DOMAIN, `domain/domain.lang:50-78`), so guest code can
+use them. Nat stays VIS_INTERNAL. The gate `make -B check` is GREEN, exit
+0, with the clang `-Werror` check (log `orbit-lang-S6-B4-gate.log`).
+
+Rulings. The S6 builder call (PLAN section 8, 2026-10-17) gives the
+surface, the two refusal codes, the fold forms and the slices. The USER
+ruling S6: Bag is indexed by the domain family Size (Nat stays
+internal); O21 and `Orbit ≃ Bag n` move to S7; the M3b mutant is in S6.
+FORMERS gives the indexed family with path constructors as F18 and the
+block as F19, so SPEC says F1 to F19.
+
+| Count | S5 (a12973a) | S6 | Reason |
+|---|---|---|---|
+| examples | 29 | 31 | `hiit` (Bag and its fold), `qiit` (Charter, Ratified and the block fold), both guest |
+| check refusals | 147 | 150 | B3 `bag-no-squash`, B4 `block-fold-target` and `block-fold-no-squash`, all TYPE_MISMATCH |
+| evals | 75 | 80 | B3 `hiit bagTwoCount`, `bagSwapCount`, `qiit adoptedZero`, `adoptedTwo`, `adoptedLaw` |
+
+The other counts do not change: parse refusals 19, kit-only refusals 22,
+runs 5, run refusals 10, asmtool 8 of 8, builds 3, lower refusals 16,
+build checks 33, dispatch 20, evm steps 43, precompile steps 18, mock 13
+rows, diff 15 rows, emit 24, and the review, domain, path, fuel, output,
+lower and hashing regressions. Only `domain/domain.lang` can declare a
+family (a program family is REFUSE_DATA), so the HIT_INDEX and
+BLOCK_ORDER rows are fronttool `domain` rows (a domain override,
+front.c:67), and the domain regressions run them.
+
+Rows per mode. The S6 check rows and examples use no kit name and no
+literal, so they are guest rows.
+
+| Gate | Kit rows | Guest rows |
+|---|---|---|
+| examples (`examples/kit.txt`) | 27 | 4 (`signature`, `orbit`, `hiit`, `qiit`) |
+| check refusals (`test/check/kit.txt`) | 89 | 61 (58 S5 rows and 3 S6 rows) |
+| parse refusals (`test/parse/kit.txt`) | 17 | 2 |
+| evals | 69 | 11 (6 S5 rows and the 5 S6 rows) |
+| lower refusals | 16 | none |
+
+S6 rows. The Mutant column names the S6 mutant that admits the row or
+changes its result. An older site has no S6 mutant.
+
+| Row | Code | Mode | Form | Mutant |
+|---|---|---|---|---|
+| `bag-no-squash` | TYPE_MISMATCH | guest | a Bag fold with no `bagSquash` case (the missing coherence case, at the `rule_fold` case count) | none (older site) |
+| `block-fold-target` | TYPE_MISMATCH | guest | a Charter block fold with one target type, not two | none (FA leaves it TYPE_MISMATCH at a later site) |
+| `block-fold-no-squash` | TYPE_MISMATCH | guest | a Charter block fold with no `ratifiedSquash` case | none (as `block-fold-target`) |
+| fronttool `hiit-wrong-index` | HIT_INDEX | domain | an end of the path constructor `vbad` is the family at another index | none in the S6 run |
+| fronttool `hiit-no-result` | HIT_INDEX | domain | a constructor of an indexed family states no result | HI1 |
+| fronttool `hiit-wrong-head` | HIT_INDEX | domain | the result of `vnil` is `Sz`, not the family `V` (B4) | HI2 |
+| fronttool `block-order` | BLOCK_ORDER | domain | the header of `P0` names the later sort `Q0` | BO, BOb (code kills) |
+| fronttool `index-prop` | NAME_UNKNOWN | domain | `Prop` in an index telescope (rule R4) | none (older site) |
+| fronttool `block-ok` | ok | domain | a field names a later sort of its block | none |
+| fronttool Even/Odd `one` | ok | domain | a block fold with the targets Nat and Unit (B4) | SR |
+| fronttool Even/Odd `two` | ok | domain | a case that uses the folded sibling field (B4) | FS |
+| fronttool `block-fold-extra` | TYPE_MISMATCH | domain | a block fold with an extra argument before the value (B4) | FA |
+| fronttool USER rows (6fa6a15, 8dd82a3) | TYPE_MISMATCH, HIT_BOUNDARY, REFUSE_STATE, ok | domain | index arguments in point and path cases, the fibre of a transport result, the print order of block targets, a sibling recursive field at its target (Box), a path field over a sibling (L/R), the parameter telescope (2 rows), reserved constructor signatures in a header fold, a block universe, a state with an index | SR, FS (Box, L/R) |
+| `glue-cover` (S5) | SYSTEM_COVER | kit | a Glue system that does not cover its face (the S5 M3 row) | M3b |
+
+Mutants, one at a time (runner `orbit-lang-work/S6-mutants.sh`, log
+`orbit-lang-work/S6-mutants.log` for run 2, log
+`orbit-lang-work/S6-mutants.run1.log` for run 1). A pristine pass comes
+first. After the loop, `src/front/check.c` equals every save and
+`src/front/eval.c` equals the FS save, and a final `make -B` build exits
+0.
+
+| Mutant | Edit | Killer | Verdict |
+|---|---|---|---|
+| M3b SYSTEM_COVER and PATH_END admit | check.c `end_fail`: PATH_END returns 1, and the Glue cover test `0 *` | kit row `glue-cover`: got `ok` | KILLED |
+| HI1 HIT_INDEX admits no result | check.c `ctor_result`: no result returns 1 | fronttool `hiit-no-result`: got `ok` | KILLED |
+| HI2 HIT_INDEX admits a wrong head | check.c `ctor_result`: the head test `0 *` | fronttool `hiit-wrong-head`: got `ok` | KILLED |
+| BO BLOCK_ORDER admits | check.c `header_order`: `if (0 * named)` | fronttool `block-order`: got REFUSE_REC | KILLED (code) |
+| BOb BO and the R3 loop | BO, and the `unknown_name` R3 loop starts at the end | fronttool `block-order`: got NAME_UNKNOWN | KILLED (code) |
+| FA block fold arity admits | check.c `fold_block`: the arity test `0 *` | run 1 SURVIVED (both block rows and `bag-no-squash` stay TYPE_MISMATCH at a later site); run 2 fronttool `block-fold-extra`: got `ok` | KILLED |
+| SR sort_res gives the result | check.c `sort_res` returns `res` | fronttool Even/Odd `one` and the USER Box row: TYPE_MISMATCH | KILLED |
+| CF case_fields admits a recursive index | check.c `case_fields`: `&& !field->recursive` removed | `examples/qiit.lang`: HIT_BOUNDARY at `adoptRule` | KILLED |
+| FS field_sort gives the family | eval.c `field_sort` returns `family` | `qiit adoptedTwo`, `adoptedLaw`: INTERNAL; fronttool Even/Odd, Box, L/R: INTERNAL | KILLED |
+
+Score: 9 of 9 mutants killed (run 2). M3b, HI1, HI2 and FA are
+admissions. SR and CF refuse a valid program (TYPE_MISMATCH,
+HIT_BOUNDARY). FS gives INTERNAL in eval. BO and BOb are code kills: a
+header cannot resolve a later sort of its block, so with BO the row meets
+REFUSE_REC (rule R3), and with BOb it meets NAME_UNKNOWN. BLOCK_ORDER is
+the first refusal of that chain and has no admission mutant, so the kill
+is the changed code. Run 1 had 8 mutants, and FA SURVIVED: both block
+rows and `bag-no-squash` fail with the same code at a later site. B4
+added the row `block-fold-extra`, and run 2 killed FA. M3b closes the S5
+open item: with both refusals of the S5 M3 row gone, `glue-cover` is
+admitted. SR is equivalent on `qiit` (both targets are Trunc0 Size); the
+row Even/Odd `one` has two different targets. The FS killer that the
+prompt named (`qiit adoptedTwo`) kills FS: the fold of the `ratify` field
+at Charter is INTERNAL, although the case does not use it. Open: the
+`hiit-wrong-index` site (an end at another index) has no mutant in the
+S6 run.
+
+Deviations from the S6 builder call (6):
+
+1. The fold targets are constant types, as PLAN "Fold" says. The B3
+   prompt said a family over the index; PLAN wins.
+2. Transport at an indexed or block sort stays neutral for every line
+   (USER B2 safety, PLAN section 8). This is stronger than O25 and the
+   PLAN "Eval" line, which keep it neutral only along an index line that
+   is not constant. `transp_family` does not change.
+3. The USER fixes in 8dd82a3 (+54 -8 on the B3 tree 35c2e2cb):
+   `fold_block` checks that the parameters of the scrutinee inhabit the
+   telescope of every block sort (a PLAN "Fold" line); eval `field_sort`
+   reads the type under a path field and `fold_path_field` folds at
+   `field_sort`, which closes B3 deviation 3 (a path field of a sibling
+   sort folded at the constructor sort); `print_value` prints the block
+   targets first; 7 fronttool rows.
+4. The USER fixes in 6fa6a15 (B2 safety, PLAN section 8): `case_image`,
+   `path_case_type` and `fold_family` pass the parameters only;
+   `rule_fold` refused block folds until B3; `names_var` respects
+   binders; block universes go to a fixed point; `check_state` refuses an
+   index; eval `transp_data` keeps an indexed or block sort neutral.
+5. `bag-no-squash` is refused at the `rule_fold` fallback (the case count
+   is not the constructor count plus 1), not in `fold_family`. The code
+   is TYPE_MISMATCH, as PLAN says.
+6. PLAN B4 names FORMERS, SPEC and `formers/tcc-evm-contract.md`. The
+   records also update the FORMERS section 5 matrix (an S6 row), the
+   `family` line of `docs/host/README.md`, and the FORMERS F17 and S5
+   citations of the equivalences, which S6 moved from
+   `domain/domain.lang:50-113` to lines 80 to 142.
+
+S6 adds one binder form (the index telescope) and one keyword (`and`),
+and no universe. The Prop-like rows are `index-prop` (Prop in an index
+telescope is NAME_UNKNOWN) and the squash cases: a sort without a squash
+constructor is not a set by conversion (PATH_UIP), and a fold that omits
+a squash case is TYPE_MISMATCH.
+
+Builder deaths: none. S6 called no builder (the USER route). The main
+loop did the work by hand in sessions 1 to 6
+(`orbit-lang-work/S6-HANDOFF.md`): B3 in session 4, the B4 rows and the
+mutant runs in session 5, and this section and the gate in session 6.

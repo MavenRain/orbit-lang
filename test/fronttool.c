@@ -124,6 +124,9 @@ int main(void) {
   ok &= domain("family Sz := zs | ss (szPrev : Sz)\n"
                "family V : Sz -> Type 0 := vnil | vcons (vSize : Sz) (vTail : V vSize) : V (ss vSize)", "HIT_INDEX");
   ok &= domain("family P0 : Q0 -> Type 0 := p0 : P0 q0 and Q0 := q0", "BLOCK_ORDER");
+  /* hiit-wrong-head: the result of a constructor is not its family. */
+  ok &= domain("family Sz := zs | ss (szPrev : Sz)\n"
+               "family V : Sz -> Type 0 := vnil : Sz | vcons (vSize : Sz) (vTail : V vSize) : V (ss vSize)", "HIT_INDEX");
   ok &= domain("family W : Prop -> Type 0 := w0", "NAME_UNKNOWN");
   ok &= domain("family Ch := gen | adopt (adoptOf : Ch) (adoptBy : Rt adoptOf) "
                "and Rt : Ch -> Type 0 := rat (ratOf : Ch) : Rt ratOf", NULL);
@@ -154,6 +157,17 @@ int main(void) {
   ok &= domain("family Even := ez | es (oddPrev : Odd) and Odd := os (evenPrev : Even)\n"
                "def point : Path Nat (fold Nat Unit 0 (fun u => 1) (fun n => unit) (es (os ez))) 1 := refl\n"
                "def other : Path Unit (fold Nat Unit 0 (fun u => 1) (fun n => unit) (os ez)) unit := refl", NULL);
+  /* A recursive field of a sibling sort is typed at the target of that
+     sort, and it folds at that sort. */
+  ok &= domain("family Even := ez | es (oddPrev : Odd) and Odd := os (evenPrev : Even)\n"
+               "def one : Path Nat (fold Nat Unit 0 (fun (u : Unit) => 1) (fun (n : Nat) => unit) (es (os ez))) 1 := refl", NULL);
+  ok &= domain("family Even := ez | es (oddPrev : Odd) and Odd := os (evenPrev : Even)\n"
+               "def two : Path Nat (fold Nat Nat 0 (fun (u : Nat) => natAdd u 1) (fun (n : Nat) => natAdd n 1) (es (os ez))) 2 := refl", NULL);
+  /* block-fold-extra: a block fold with an extra argument before the
+     value. Without the arity test the extra argument is never read. */
+  ok &= domain("family Even := ez | es (oddPrev : Odd) and Odd := os (evenPrev : Even)\n"
+               "def bad : Nat := fold (Even -> Nat) Unit (fun (e : Even) => 0) (fun (u : Unit) => fun (e : Even) => 1) "
+               "(fun (g : Even -> Nat) => unit) unit ez", "TYPE_MISMATCH");
   /* A path field over a sibling sort folds at that sibling. */
   ok &= domain("family Box := box (boxLeft : Item) (boxRight : Item) (boxPath : Path Item boxLeft boxRight) "
                "and Item := item\n"

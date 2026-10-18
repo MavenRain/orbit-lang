@@ -1,12 +1,12 @@
 # Validation
 
-Date: 2026-10-17. tcc: 0.9.28rc. evm (go-ethereum): 1.14.12. Host
-executable: `build/langc` at 9e28399 plus the S5 changes.
+Date: 2026-10-18. tcc: 0.9.28rc. evm (go-ethereum): 1.14.12. Host
+executable: `build/langc` at 8dd82a3 plus the S6 changes.
 
 `make -B check` passes: it builds `langc` and the test tools with tcc,
 runs the clang `-Wall -Wextra -Wswitch-enum -Werror` check, and runs the
-gate scripts. It runs 29 examples, 19 parse refusals, 147 check
-refusals, 22 kit-only refusals, 75 evals, 5 runs, 10 run refusals, 8
+gate scripts. It runs 31 examples, 19 parse refusals, 150 check
+refusals, 22 kit-only refusals, 80 evals, 5 runs, 10 run refusals, 8
 asmtool checks, 3 builds, 16 lower refusals, 33 build checks, 20
 dispatch checks, 43 evm steps, 18 precompile steps, 13 mock rows, 15
 diff rows, 24 emit regressions and the review, domain, path, fuel,
@@ -79,3 +79,17 @@ on a non-equivalence, a Glue at Prop, two isEquiv proofs or two ua
 proofs that are not convertible, and an hcomp at a word position.
 Mutants M1, M2 and M4 to M9 are killed (8 of 9, 7 admissions). M3 meets
 a second refusal class (PATH_END) (docs/STATUS.md "## S5").
+
+The S6 review adds indexed families with path constructors (HIIT, F18)
+and inductive-inductive blocks with path constructors (QIIT, F19) as new
+work (PLAN section 8). Size, Bag, Charter and Ratified are domain
+families. The review adds the guest examples `hiit` and `qiit`, 5 evals,
+3 check refusals and the fronttool domain rows. Refusals cover a
+constructor of an indexed family with no result or with a wrong head, an
+end of a path constructor at another index, a block header that names a
+later sort, Prop in an index telescope, a fold that omits a squash case
+(of a family and of a block), a block fold with one target too few or
+one argument too many, and a block fold whose parameters do not inhabit
+the telescope of a sort. Mutants M3b, HI1, HI2, BO, BOb, FA, SR, CF and FS
+are killed (9 of 9). BO and BOb are code kills, and FA needed a second
+run with the new row `block-fold-extra` (docs/STATUS.md "## S6").
