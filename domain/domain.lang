@@ -47,6 +47,20 @@ family Quot (A : Type 0) (R : A -> A -> Type 0) := quot (quotOf : A)
   | quotEq (quotA : A) (quotB : A) (quotR : R quotA quotB) (i : I) [ ~i -> quot A R quotA, i -> quot A R quotB ]
   | quotSquash (quotFrom : Quot A R) (quotTo : Quot A R) (quotLeft : Path (Quot A R) quotFrom quotTo) (quotRight : Path (Quot A R) quotFrom quotTo) (i : I) (j : I)
     [ ~i -> quotLeft @ j, i -> quotRight @ j, ~j -> quotFrom, j -> quotTo ]
+-- The index of Bag (S6, O24, USER ruling S6): a domain family, so Nat
+-- stays internal.
+family Size := sz0 | szS (szPred : Size)
+-- The bag (S6, O20): an indexed HIT. Bag A n is the lists of n elements
+-- of A up to a swap of the first two, and bagSquash in the form of
+-- Trunc0 squash0 makes it a set at each index. A constructor states its
+-- index after its fields. nil and cons are kernel names (rule R4), so
+-- the point constructors are bagNil and bagCons.
+family Bag (A : Type 0) : Size -> Type 0 := bagNil : Bag A sz0
+  | bagCons (consSize : Size) (consHead : A) (consTail : Bag A consSize) : Bag A (szS consSize)
+  | swap (swapSize : Size) (swapFirst : A) (swapSecond : A) (swapTail : Bag A swapSize) (i : I) : Bag A (szS (szS swapSize))
+    [ ~i -> bagCons A (szS swapSize) swapFirst (bagCons A swapSize swapSecond swapTail), i -> bagCons A (szS swapSize) swapSecond (bagCons A swapSize swapFirst swapTail) ]
+  | bagSquash (squashSize : Size) (bagFrom : Bag A squashSize) (bagTo : Bag A squashSize) (bagLeft : Path (Bag A squashSize) bagFrom bagTo) (bagRight : Path (Bag A squashSize) bagFrom bagTo) (i : I) (j : I) : Bag A squashSize
+    [ ~i -> bagLeft @ j, i -> bagRight @ j, ~j -> bagFrom, j -> bagTo ]
 
 -- Equivalences (S3a, R3 (a)): contractible types, fibers, isEquiv and
 -- Equiv as Sigma types (the map, then for each y the center pack x p and

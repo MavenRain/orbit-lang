@@ -274,6 +274,10 @@ typedef struct {
      constructor has 0 and NULL. */
   uint32_t interval_count;
   const Core *boundary;
+  /* The result indices (S6): one core for each index of the family, in the
+     context of the parameters and the point fields. NULL for a uniform
+     family. */
+  const Core *const *result;
 } CtorInfo;
 
 /* A domain family. Its constructors are ctors[first_ctor ...]. A family
@@ -286,6 +290,14 @@ typedef struct {
   uint32_t ctor_count;
   uint64_t universe; /* the largest universe of a constructor field */
   Origin origin;     /* ORIGIN_KIT for Env and Out (orbit-lang S3) */
+  /* The index telescope (S6): index_count cores, index k in the context of
+     the parameters and the indices before it. 0 for a uniform family. */
+  const Core *const *index_types;
+  uint32_t index_count;
+  /* The block (S6): the families block_first up to block_first +
+     block_count. A family outside a block is a block of one. */
+  uint32_t block_first;
+  uint32_t block_count;
 } FamilyInfo;
 
 typedef struct {

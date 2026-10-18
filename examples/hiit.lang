@@ -1,0 +1,10 @@
+-- Indexed HITs (S6, O20, USER ruling S6): Bag values at explicit sizes
+-- and one path by swap. A constructor takes the parameter A, then its
+-- fields; its index is its result at the fields. The elements are Size
+-- values, as Nat is internal. The folds are S6 slice B3.
+def sizeOne : Size := szS sz0
+def bagOne : Bag Size sizeOne := bagCons Size sz0 sizeOne (bagNil Size)
+def bagTwo : Bag Size (szS sizeOne) := bagCons Size sizeOne sz0 bagOne
+def bagSwapped : Bag Size (szS sizeOne) := bagCons Size sizeOne sizeOne (bagCons Size sz0 sz0 (bagNil Size))
+def bagSwap : Path (Bag Size (szS sizeOne)) bagTwo bagSwapped :=
+  fun (i : I) => swap Size sz0 sz0 sizeOne (bagNil Size) i

@@ -169,10 +169,11 @@ uses zkpolicy-lang as a design reference only. O2 gives the other route.
 
 Guest examples for S6:
 
-- HIIT: `Bag : Nat → U`, with `nil : Bag zero`,
+- HIIT: `Bag : Nat → U` (USER ruling S6: `Bag A : Size → U`), with `nil : Bag zero`,
   `cons : Choice → Bag n → Bag (suc n)`,
   `swap : cons a (cons b t) ≡ cons b (cons a t)` and a set truncation. Then
-  `Orbit ≃ Bag n` for n members is a guest theorem (Glue, S5).
+  `Orbit ≃ Bag n` for n members is a guest theorem (Glue, S5). It needs
+  O21, so it moves to S7 (USER ruling S6).
 - QIIT: `Charter : U` and `Ratified : Charter → U` in one block.
   `genesis : Charter`, `adopt : (c : Charter) → Ratified c → Charter`, and a
   path constructor that identifies two adoptions with the same rule. This
@@ -475,6 +476,121 @@ it: elim on the unglue of an hcomp in a Glue type over a Sum.
 The build is by hand (the USER route of S2 to S4), one commit at a
 time with the gate after each.
 
+### Builder call (S6, 2026-10-17)
+
+Source: new work in this lineage (O2 (a)). zkpolicy-lang a1780a9 (indexed
+families, HIIT) and f176ac6 (mutual blocks) are a design reference only.
+Survey: ~/Documents/orbit-lang-work/S6-survey.md (kernel) and
+S6-survey-ref.md (reference). Facts: a family has parameters only
+(FamilyInfo param_types and param_count, core.h:281), a constructor has no
+result annotation, there is no mutual block, fold has no motive (the result
+type comes from the hint), and only domain/domain.lang declares a family
+(REFUSE_DATA, check.c:3219). Nat is VIS_INTERNAL (check.c:116).
+
+Surface. Family declarations stay in domain.lang (kit rule R1 and coin-lang
+S4 R1 hold; a program family is REFUSE_DATA).
+
+- Index telescope: `family Bag (A : Type 0) : Size -> Type 0 := ...`. The
+  type after `:` is a Pi telescope that ends in `Type 0`. Its depth is the
+  index count. A family without `:` is uniform, as before.
+- Each constructor of an indexed family states its result after its
+  fields: `nil : Bag A sz0`, `cons (n : Size) (a : A) (t : Bag A n) : Bag A
+  (szS n)`. A path constructor states it after its interval fields and
+  before its boundary. An application takes the parameters and the fields;
+  the result index is the annotation at the fields.
+- Block: `family Charter (R : Type 0) := ... and Ratified (R : Type 0) :
+  Charter R -> Type 0 := ...`. New keyword `and`. All headers of a block
+  bind first, then the point constructors of all sorts, then the path
+  constructors of all sorts. So a boundary can name a point constructor of
+  a later sort.
+- Sets: each sort that must be a set has a 2-dimensional squash
+  constructor at each index, in the form of Trunc0 squash0.
+
+Guest examples (O20, USER ruling S6):
+
+- `family Size := sz0 | szS (s : Size)`: a domain index family.
+- `family Bag (A : Type 0) : Size -> Type 0 := nil : Bag A sz0 | cons (n :
+  Size) (a : A) (t : Bag A n) : Bag A (szS n) | swap (n : Size) (a : A) (b
+  : A) (t : Bag A n) (i : I) : Bag A (szS (szS n)) [ ~i -> cons (szS n) a
+  (cons n b t), i -> cons (szS n) b (cons n a t) ] | bagSquash ...`.
+- `Charter` and `Ratified`: `genesis : Charter R`, `adopt (c : Charter R)
+  (r : Ratified R c)`, `ratify (c : Charter R) (rule : R) : Ratified R c`,
+  and the path constructor `adoptTwice (c : Charter R) (rule : R) (i : I)`
+  from `adopt c (ratify c rule)` to the adoption of the same rule a second
+  time (law 4 in the type: amend (amend L) is amend L). Squash
+  constructors for both sorts.
+
+Check. New refusal codes; one site each.
+
+- HIT_INDEX: a constructor of an indexed family has no result annotation,
+  or its head is not the family at its parameters, or an end of a path
+  constructor has the family at a different index (gate row "a wrong index
+  in a path constructor").
+- BLOCK_ORDER: the header of a block sort (parameters or index types) names
+  that sort or a later sort of the block (gate row "inductive-inductive
+  order").
+- A fold that omits a squash case (gate row "a missing coherence case")
+  is TYPE_MISMATCH at the S2 case-count site (check.c:1184): no new code.
+- Recursive fields stay syntactic: the head is a block sort at its
+  parameters (DOMAIN_FAMILY otherwise).
+- Prop-like forms (R11 and USER ruling, section 1): the index telescope is
+  a new binder. `Prop` and `SProp` there are NAME_UNKNOWN (reserved, rule
+  R4). The grammar has no irrelevant index. A sort without a squash
+  constructor is not a set by conversion (PATH_UIP).
+
+Fold. Non-dependent only.
+
+- Indexed family: the target is a constant type from the hint, as for a
+  uniform family. A case takes the fields; a recursive field at any index
+  becomes the target. Index fields stay.
+- Block of n sorts: the first n arguments are the target types, one for
+  each sort, then one case for each constructor of each sort in
+  declaration order, then the value. A one-sort family keeps the hint form.
+- Eval: fold_family, fold_path and fold_square apply at each index. A
+  field of a sibling sort folds with the same case vector at that sort.
+  transp at an indexed family with an index line that is not constant
+  stays neutral (O25).
+- Lowering: no change. A value of an indexed or block sort at a word
+  position is REFUSE_LOWER (lower.c:645).
+
+Meets. The S2 HIT and QIT kernel: uniform families do not change. Orbit
+(S4): Orbit is a Quot instance, not a block. elim (S4): Sum and Unit only;
+S6 folds do not give O21 (USER ruling S6: O21 and `Orbit ≃ Bag n` go to
+S7). Glue and hcomp at U (S5): a formal hcomp at an indexed sort is a
+value (coin-lang S4 R3), and its fold is an hcomp at the target.
+
+Guest or kit. Size, Bag, Charter, Ratified, their constructors and their
+folds are ORIGIN_DOMAIN, so guest code can use them (kit_head,
+check.c:2148). Nat and its operations stay VIS_INTERNAL.
+
+Slices. B1 lexer `and`, parser index telescope, constructor result and
+block, AST (no new rows). B2 check: FamilyInfo indices, CtorInfo result
+index, HIT_INDEX, BLOCK_ORDER, Size and Bag in domain.lang, refusal rows
+by domain override (front.c:67). B3 fold and eval for indexed and block
+folds, Charter and Ratified, examples/hiit.lang and qiit.lang, eval rows.
+B4 M3b mutant, FORMERS F18 HIIT and F19 QIIT, SPEC, tcc-evm-contract.md.
+Then mutants (one admission mutant for each new site, a "b" mutant for a
+row with a second refusal class) and the close.
+
+B2 safety: indexed folds pass only family parameters to constructor field
+types and boundary images. Mutual folds are refused with TYPE_MISMATCH
+until B3 supplies the targets and cases for every sort. Transport at an
+indexed or mutual sort stays neutral until its field lines retain the
+recursive fibre and sibling sort. Block headers cannot fold a sort whose
+constructors are still reserved. Block universes are rechecked to a fixed
+point before use, and BLOCK_ORDER checks free sort names, respecting local
+binders. State declarations retain their unindexed form.
+
+### USER ruling (S6, 2026-10-17)
+
+- Bag index: "Domain index family". domain.lang declares `Size := sz0 |
+  szS (s : Size)` before Bag; Bag is indexed by Size. Nat stays
+  VIS_INTERNAL (S3 holds).
+- O21 timing: "Equivalence in S7". S6 ships the Bag and Charter formers,
+  their folds and the three gate rows. O21 and `Orbit ≃ Bag n` move to S7.
+- M3b: "Yes, in S6". One mutant that removes both refusals of the S5 M3
+  row, as S4 N1b did.
+
 ## 9. Open items
 
 USER ruling (S1, 2026-10-16): every default below is RULED; where an item
@@ -531,12 +647,14 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
 - O19 Scope of the claim: orbit-lang proves the laws on the quotient
   reading. It does not claim the category-level Lean statements beyond the
   discrete case of U/Characterization.lean:81.
-- O20 HIIT and QIIT examples: Bag and Charter of section 5.
+- O20 HIIT and QIIT examples: Bag and Charter of section 5. USER ruling
+  (S6): Bag is indexed by the domain family Size, not Nat.
 - O21 Dependent elimination on a family with path constructors: the
   cases of the path constructors are PathP over the motive. Law 2
   uniqueness ("Orbit induction into a set", section 3) needs it, so S7
   needs it at the latest. S4 refuses elim on S1, Trunc1, Trunc0, Quot
-  and Orbit.
+  and Orbit. S6 folds are non-dependent and do not give O21 (USER ruling
+  S6: O21 and `Orbit ≃ Bag n` in S7).
 - O22 elim on a neutral scrutinee stays neutral in S4 (no comp in the
   motive). A Sum or Unit scrutinee is never a formal hcomp: `blocked`
   (src/front/eval.c) makes elim on an `hcomp_stuck` value neutral before
@@ -550,3 +668,8 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
   finNeg have VIS_INTERNAL, because `Fin n` takes a Nat and its elements
   are Nat literals. A guest form of a finite type on the span (for S_q
   on Choice, O5) is a later slice.
+- O24 S6 index family: Size (sz0, szS) in domain.lang is the index of Bag
+  (USER ruling S6). It is a former instance, not a base type, so O3 (a)
+  holds.
+- O25 transp at an indexed family along an index line that is not
+  constant stays neutral in S6, as O22. S7 or later rules a reduction.

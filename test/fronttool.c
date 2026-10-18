@@ -42,7 +42,7 @@ static int guest(const char *text, const char *want) {
   return checked(text, ORIGIN_PROGRAM, CHECK_GUEST, want);
 }
 
-static int normal_roundtrip(const char *type, const char *body) {
+static int normal_roundtrip_in(const char *domain_text, const char *type, const char *body) {
   char source[4096];
   char normal[2048];
   Arena arena;
@@ -50,7 +50,7 @@ static int normal_roundtrip(const char *type, const char *body) {
   TokenList tokens = {0};
   DeclList decls = {0};
   Machine machine;
-  snprintf(source, sizeof source, "def value : %s := %s", type, body);
+  snprintf(source, sizeof source, "%s\ndef value : %s := %s", domain_text, type, body);
   arena_init(&arena, (size_t)1 << 24);
   diag_init(&diag);
   int ok = lex_source(&arena, "test-roundtrip", source, strlen(source), &tokens, &diag)
@@ -65,8 +65,12 @@ static int normal_roundtrip(const char *type, const char *body) {
   arena_release(&arena);
   if (!ok)
     return 0;
-  snprintf(source, sizeof source, "def value : %s := %s", type, normal);
+  snprintf(source, sizeof source, "%s\ndef value : %s := %s", domain_text, type, normal);
   return domain(source, NULL);
+}
+
+static int normal_roundtrip(const char *type, const char *body) {
+  return normal_roundtrip_in("", type, body);
 }
 
 int main(void) {
@@ -108,6 +112,52 @@ int main(void) {
                "fun x y => fun (i : I) => arcFrom (arc x y i)", "NAME_UNKNOWN");
   ok &= domain("family T := pt (value : Nat) | arc (previous : T) (i : I) "
                "[ ~i -> pt (fold (fun n => n) 1 previous), i -> pt (fold (fun n => n) 1 previous) ]", "HIT_BOUNDARY");
+  /* Indexed families and blocks (S6). hiit-wrong-index: an end of a path
+     constructor is the family at another index. hiit-no-result: a
+     constructor of an indexed family states no result. block-order: a
+     header names a later sort of its block. index-prop: Prop is not a type
+     in an index telescope (rule R4). block-ok: a field names a later sort. */
+  ok &= domain("family Sz := zs | ss (szPrev : Sz)\n"
+               "family V : Sz -> Type 0 := vnil : V zs | vcons (vSize : Sz) (vTail : V vSize) : V (ss vSize) "
+               "| vbad (badSize : Sz) (badTail : V badSize) (i : I) : V (ss badSize) "
+               "[ ~i -> vcons badSize badTail, i -> badTail ]", "HIT_INDEX");
+  ok &= domain("family Sz := zs | ss (szPrev : Sz)\n"
+               "family V : Sz -> Type 0 := vnil | vcons (vSize : Sz) (vTail : V vSize) : V (ss vSize)", "HIT_INDEX");
+  ok &= domain("family P0 : Q0 -> Type 0 := p0 : P0 q0 and Q0 := q0", "BLOCK_ORDER");
+  ok &= domain("family W : Prop -> Type 0 := w0", "NAME_UNKNOWN");
+  ok &= domain("family Ch := gen | adopt (adoptOf : Ch) (adoptBy : Rt adoptOf) "
+               "and Rt : Ch -> Type 0 := rat (ratOf : Ch) : Rt ratOf", NULL);
+  /* Index arguments are not constructor parameters in point or path cases. */
+  ok &= domain("family Sz := zs | ss (pred : Sz)\n"
+               "family V (A : Type 0) : Sz -> Type 0 := vn : V A zs "
+               "| vc (item : A) : V A (ss zs) "
+               "| seg (i : I) : V A zs [ ~i -> vn A, i -> vn A ]\n"
+               "def result : Path Nat (fold 0 (fun a => a) refl (vc Nat 7)) 7 := refl", NULL);
+  /* A transport's printed result must still inhabit the destination fibre. */
+  ok &= normal_roundtrip_in("family Sz := zs | ss (pred : Sz)\n"
+                            "family V (A : Type 0) : Sz -> Type 0 := vn : V A zs",
+                            "V Nat zs", "transp (fun (i : I) => V Nat zs) i0 (vn Nat)");
+  ok &= normal_roundtrip_in("family Sz := zs | ss (pred : Sz) "
+                            "| edge (i : I) [ ~i -> zs, i -> ss zs ]\n"
+                            "family V : Sz -> Type 0 := vn : V zs | vc : V (ss zs)",
+                            "V (ss zs)", "transp (fun (i : I) => V (edge i)) i0 vn");
+  ok &= normal_roundtrip_in("family Even (A : Type 0) := ez | es (oddPrev : Odd A) "
+                            "and Odd (A : Type 0) := os (evenPrev : Even A)",
+                            "Even Nat", "transp (fun (i : I) => Even Nat) i0 (es Nat (os Nat (ez Nat)))");
+  ok &= domain("family Even := ez | es (oddPrev : Odd) and Odd := os (evenPrev : Even)\n"
+               "def result : Nat := fold 0 (fun n => natAdd n 1) (es (os ez))", "TYPE_MISMATCH");
+  /* Header folds must not see the zeroed, reserved constructor signatures. */
+  ok &= domain("family A := a (n : Nat) and B (x : A) (y : fold Unit x) := b\n"
+               "def value : B (a 0) unit := b (a 0) unit", "HIT_BOUNDARY");
+  /* A later sort's universe propagates backwards through the block. */
+  ok &= domain("family Low := low (high : High) and High := highCtor (big : Type 0)\n"
+               "def small : Type 0 := Low", "TYPE_MISMATCH");
+  ok &= domain("family Low := low (high : High) and High := highCtor (big : Type 0)\n"
+               "def large : Type 1 := Low", NULL);
+  ok &= domain("family F (A : Type 0) : ((G : Type 0) -> G -> G) -> Type 0 := "
+               "mk (x : (T : Type 0) -> T -> T) : F A x and G := g", NULL);
+  ok &= domain("family F (G : Type 0) : G -> Type 0 := mk (x : G) : F G x and G := g", NULL);
+  ok &= domain("state State : Nat -> Type 0 := st (counter : Nat) : State counter", "REFUSE_STATE");
   ok &= domain("family U := u\n"
                "family T := pt (value : Nat) | arc (i : I) "
                "[ ~i -> pt (fold 0 u), i -> pt (fold 0 u) ]", NULL);

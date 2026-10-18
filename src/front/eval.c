@@ -1417,7 +1417,7 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
   if (op == OP_CTOR && c != NULL && c->family < m->family_count)
     return m->families[c->family].param_count + c->field_count + c->interval_count;
   if (op == OP_FAMILY && f != NULL)
-    return f->param_count;
+    return f->param_count + f->index_count;
   if (op == OP_FOLD_FAMILY && f != NULL)
     return f->ctor_count + 2u;
   if (op == OP_ELIM)
@@ -1844,6 +1844,10 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
       break;
     return transp_list(m, line, phi, base);
   case OP_FAMILY:
+    /* Indexed fibres and sibling sorts need their own field lines. Keep
+       the transport neutral until those reductions are implemented. */
+    if (head->inst < m->family_count && (m->families[head->inst].index_count > 0u || m->families[head->inst].block_count > 1u))
+      break;
     /* S4 item 6 (R7 (a)): a family with no parameters is the same type at
        each point of the line by its form (not by regularity), so the base
        stays, also a neutral base or a formal hcomp. */

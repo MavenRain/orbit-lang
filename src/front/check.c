@@ -35,8 +35,9 @@ typedef struct {
   uint32_t level;     /* the number of binders */
   unsigned depth;
   uint32_t eta_count;
-  uint32_t self;      /* the family whose fields are checked, or NO_FAMILY */
-  uint32_t self_uses; /* the uses of that family in the current field */
+  uint32_t self;       /* the first family of the block whose fields are checked, or NO_FAMILY */
+  uint32_t self_count; /* the number of sorts of that block (S6) */
+  uint32_t self_uses;  /* the uses of a sort of that block in the current field */
   /* The levels of the earlier point fields of the current field, from
      FIELD_BASE up to FIELD_TOP (S4 item 13), and the uses of them. */
   uint32_t field_base;
@@ -1050,7 +1051,7 @@ static const Value *fold_image(Checker *c, uint32_t fam, const Core *const *core
 static const Value *case_image(Checker *c, uint32_t inst, const Value *st, const Core *const *cores, uint32_t done, const Value *r0, const Value *r1, uint32_t level) {
   Machine *m = c->m;
   const CtorInfo *ctor = &m->ctors[inst];
-  uint32_t p = st->argc;
+  uint32_t p = m->families[ctor->family].param_count;
   uint32_t n = ctor->field_count;
   uint32_t d = ctor->interval_count;
   const Value **a = arena_alloc(m->arena, ((size_t)p + n + d) * sizeof *a);
@@ -1109,7 +1110,7 @@ static const Core *square_type(Checker *c, uint32_t inst, const Value *st, const
 static const Value *path_case_type(Checker *c, uint32_t inst, const Value *st, const Value *res, const Core *const *cores, uint32_t done) {
   Machine *m = c->m;
   const CtorInfo *ctor = &m->ctors[inst];
-  const Env *env = env_of(c, st->args, st->argc);
+  const Env *env = env_of(c, st->args, m->families[ctor->family].param_count);
   uint32_t l = c->level + ctor->field_count;
   const Core *ends[2];
   const Core *t;
@@ -1129,7 +1130,7 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   Checker *c = k->c;
   Machine *m = c->m;
   const FamilyInfo *f = &m->families[st->inst];
-  const Env *env = env_of(c, st->args, st->argc);
+  const Env *env = env_of(c, st->args, f->param_count);
   const Value *res = k->hint;
   const Core **cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 2u) * sizeof *cores);
   uint32_t j;
@@ -1161,15 +1162,26 @@ static int simple_scrutinee(const Value *t) {
   return val_is(t, OP_NAT) || val_is(t, OP_LIST);
 }
 
+/* FAM is a sort of the block whose fields are checked (S6). */
+static int in_block(const Checker *c, uint32_t fam) {
+  return c->self != NO_FAMILY && fam >= c->self && fam - c->self < c->self_count;
+}
+
 /* fold takes its scrutinee last, so the scrutinee type sets the arity. */
 static const Core *rule_fold(Call *k) {
   Checker *c = k->c;
   const Value *st = NULL;
   const Core *s = try_infer(c, k->args[k->argc - 1u], &st);
   uint32_t fam = val_is(st, OP_FAMILY) ? st->inst : NO_FAMILY;
-  if (s != NULL && fam != NO_FAMILY && c->m->families[fam].ctor_count + 1u == k->argc) {
-    if (c->m->families[fam].first_ctor + c->m->families[fam].ctor_count > c->m->ctor_count)
+  if (s != NULL && fam != NO_FAMILY) {
+    /* The constructor slots of a block are reserved before its
+       constructors are checked (S6), so the test is the block. */
+    if (in_block(c, fam))
       return nul(FAIL(c, "HIT_BOUNDARY", "a constructor boundary cannot fold %s before all of its constructors are checked", c->m->families[fam].name));
+    if (c->m->families[fam].block_count > 1u)
+      return nul(FAIL(c, "TYPE_MISMATCH", "fold over the mutual block of %s needs cases for every sort; mutual folds are not available yet", c->m->families[fam].name));
+  }
+  if (s != NULL && fam != NO_FAMILY && c->m->families[fam].ctor_count + 1u == k->argc) {
     k->hint = k->outer;
     return fold_family(k, s, st);
   }
@@ -1996,11 +2008,14 @@ static const Core *rule(Call *k) {
   return NULL;
 }
 
-/* Checks the family parameters ARGS. VALS gets their values. */
-static int check_params(Checker *c, const FamilyInfo *f, const Term *const *args, const Core **cores, const Value **vals) {
+/* Checks the first N family arguments ARGS: the parameters, then the
+   indices (S6), each at the values of the arguments before it. VALS gets
+   their values. */
+static int check_params(Checker *c, const FamilyInfo *f, uint32_t n, const Term *const *args, const Core **cores, const Value **vals) {
   uint32_t i;
-  for (i = 0; i < f->param_count; i++) {
-    cores[i] = check(c, args[i], eval_core(c->m, env_of(c, vals, i), f->param_types[i]));
+  for (i = 0; i < n; i++) {
+    const Core *t = i < f->param_count ? f->param_types[i] : f->index_types[i - f->param_count];
+    cores[i] = check(c, args[i], eval_core(c->m, env_of(c, vals, i), t));
     vals[i] = here(c, cores[i]);
     if (vals[i] == NULL)
       return 0;
@@ -2011,14 +2026,15 @@ static int check_params(Checker *c, const FamilyInfo *f, const Term *const *args
 static const Core *family_app(Call *k, uint32_t fam) {
   Checker *c = k->c;
   const FamilyInfo *f = &c->m->families[fam];
-  const Core **cores = arena_alloc(c->m->arena, ((size_t)f->param_count + 1u) * sizeof *cores);
-  const Value **vals = arena_alloc(c->m->arena, ((size_t)f->param_count + 1u) * sizeof *vals);
+  uint32_t n = f->param_count + f->index_count;
+  const Core **cores = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *cores);
+  const Value **vals = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *vals);
   if (cores == NULL || vals == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
-  if (!check_params(c, f, k->args, cores, vals))
+  if (!check_params(c, f, n, k->args, cores, vals))
     return NULL;
   k->type = val_univ(c->m, f->universe);
-  return core_op(c, OP_FAMILY, fam, 0, cores, f->param_count);
+  return core_op(c, OP_FAMILY, fam, 0, cores, n);
 }
 
 /* A constructor takes the family parameters (the indices), then its fields,
@@ -2031,12 +2047,12 @@ static const Core *ctor_app(Call *k, uint32_t ctor) {
   uint32_t q = p + ci->field_count;
   uint32_t n = q + ci->interval_count;
   const Core **cores = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *cores);
-  const Value **vals = arena_alloc(c->m->arena, ((size_t)p + 1u) * sizeof *vals);
+  const Value **vals = arena_alloc(c->m->arena, ((size_t)p + f->index_count + 1u) * sizeof *vals);
   const Env *env;
   uint32_t j;
   if (cores == NULL || vals == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
-  if (!check_params(c, f, k->args, cores, vals))
+  if (!check_params(c, f, p, k->args, cores, vals))
     return NULL;
   env = env_of(c, vals, p);
   /* Field j is checked at the parameters and the earlier field values. */
@@ -2053,7 +2069,13 @@ static const Core *ctor_app(Call *k, uint32_t ctor) {
     if (cores[j] == NULL)
       return NULL;
   }
-  k->type = val_op(c->m, VAL_OP, OP_FAMILY, ci->family, 0, vals, p);
+  /* The result indices at the parameters and the field values (S6). */
+  for (j = 0; ci->result != NULL && j < f->index_count; j++) {
+    vals[p + j] = eval_core(c->m, env, ci->result[j]);
+    if (vals[p + j] == NULL)
+      return NULL;
+  }
+  k->type = val_op(c->m, VAL_OP, OP_FAMILY, ci->family, 0, vals, ci->result == NULL ? p : p + f->index_count);
   return core_op(c, OP_CTOR, ctor, 0, cores, n);
 }
 
@@ -2071,7 +2093,7 @@ static const Core *proj_app(Call *k, uint32_t ctor, uint32_t field) {
     return nul(FAIL(c, "TYPE_MISMATCH", "%s needs a value of the family %s, found a term of type %s", ci->fields[field].name, c->m->families[ci->family].name, show(c, xt)));
   /* The field type at the parameters and the projections of the earlier
      fields of X (S4 item 13), as the second part of a Sigma. */
-  env = env_of(c, xt->args, xt->argc);
+  env = env_of(c, xt->args, c->m->families[ci->family].param_count);
   for (i = 0; i < field; i++) {
     const Value *fv = here(c, core_op(c, OP_PROJ, ctor, i, &x, 1));
     env = fv == NULL ? NULL : env_push(c->m, env, fv);
@@ -2090,12 +2112,13 @@ static int find_known(Checker *c, const char *name, Head *h) {
     if (strcmp(m->families[i].name, name) == 0) {
       h->kind = HEAD_FAMILY;
       h->index = i;
-      c->self_uses += i == c->self;
+      c->self_uses += in_block(c, i);
       return 1;
     }
   }
   for (i = 0; i < m->ctor_count; i++) {
-    if (strcmp(m->ctors[i].name, name) == 0) {
+    /* A reserved slot of a block has no name yet (S6). */
+    if (m->ctors[i].name != NULL && strcmp(m->ctors[i].name, name) == 0) {
       h->kind = HEAD_CTOR;
       h->index = i;
       return 1;
@@ -2188,7 +2211,7 @@ static uint32_t known_arity(const Checker *c, const Head *h) {
   case HEAD_TERM:
     return 0u;
   case HEAD_FAMILY:
-    return c->m->families[h->index].param_count;
+    return c->m->families[h->index].param_count + c->m->families[h->index].index_count;
   case HEAD_CTOR:
     return ci == NULL ? 0u : c->m->families[ci->family].param_count + ci->field_count + ci->interval_count;
   case HEAD_PROJ:
@@ -2275,7 +2298,7 @@ static const Core *var_core(Checker *c, const char *name, const Value **type) {
     *type = s->type;
     if (s->level >= c->field_base && s->level < c->field_top) {
       c->field_dep = 1;
-      c->field_rec |= val_is(s->type, OP_FAMILY) && s->type->inst == c->self;
+      c->field_rec |= val_is(s->type, OP_FAMILY) && in_block(c, s->type->inst);
     }
     return core_index(c, CORE_VAR, c->level - 1u - s->level);
   }
@@ -2574,7 +2597,7 @@ static const char *name_owner(const Checker *c, const char *name) {
       if (strcmp(m->ctors[i].fields[j].name, name) == 0)
         return "a domain field";
     }
-    if (strcmp(m->ctors[i].name, name) == 0)
+    if (m->ctors[i].name != NULL && strcmp(m->ctors[i].name, name) == 0)
       return m->ctors[i].event ? "an event" : "a domain constructor";
   }
   i = find_def(m, name);
@@ -2588,13 +2611,16 @@ static int name_free(Checker *c, const char *name) {
   return why == NULL ? 1 : FAIL(c, "REFUSE_NAME", "%s is %s (rule R4)", name, why);
 }
 
-/* T is the family FAM at its own parameter variables `F p1 .. pn`, in
-   the context of the parameters and SHIFT earlier fields (S4 items 9
-   and 13). */
+/* T is a sort of the block of FAM at the parameter variables of FAM
+   `F p1 .. pn`, then any index arguments (S6), in the context of the
+   parameters and SHIFT earlier fields (S4 items 9 and 13). */
 static int own_family(const Machine *m, uint32_t fam, const Core *t, uint32_t shift) {
-  uint32_t p = m->families[fam].param_count;
+  const FamilyInfo *f = &m->families[fam];
+  uint32_t p = f->param_count;
   uint32_t k;
-  if (t->kind != CORE_OP || t->op != OP_FAMILY || t->inst != fam || t->argc != p)
+  if (t->kind != CORE_OP || t->op != OP_FAMILY || t->inst < f->block_first || t->inst - f->block_first >= f->block_count)
+    return 0;
+  if (m->families[t->inst].param_count != p || t->argc != p + m->families[t->inst].index_count)
     return 0;
   for (k = 0; k < p; k++)
     if (t->args[k]->kind != CORE_VAR || t->args[k]->index != p - 1u - k + shift)
@@ -2674,13 +2700,35 @@ static const Term *cover_term(Checker *c, const Ctor *ctor, const Term *cover, c
   return cover == NULL || ends == NULL ? ends : made_term(c, ctor, TERM_IJOIN, NULL, cover, ends);
 }
 
+/* A branch of a path constructor of the indexed sort FAM failed (S6). A
+   body of the type FAM at another index is HIT_INDEX (the gate row "a
+   wrong index in a path constructor"), not the TYPE_MISMATCH of the
+   branch check. */
+static int branch_index(Checker *c, uint32_t fam, const Branch *b) {
+  Diag saved = *c->m->diag;
+  const Value *t = NULL;
+  if (c->m->families[fam].index_count == 0u || saved.code == NULL || strcmp(saved.code, "TYPE_MISMATCH") != 0 || b->term == NULL || b->term->right == NULL)
+    return 0;
+  c->m->diag->set = 0;
+  if (infer(c, b->term->right, &t) != NULL && val_is(t, OP_FAMILY) && t->inst == fam) {
+    *c->m->diag = saved;
+    c->m->diag->set = 0;
+    return FAIL(c, "HIT_INDEX", "a boundary term of a path constructor of %s has the type %s, the family at another index", c->m->families[fam].name, show(c, t));
+  }
+  *c->m->diag = saved;
+  return 0;
+}
+
 /* The boundary of CTOR under its fields: the first POINTS fields of CTOR
    (with FIELDS their checked types) and then its interval fields are
-   locals. The family parameters are already locals (check_family). */
-static const Core *boundary_core(Checker *c, uint32_t fam, const Ctor *ctor, const FieldInfo *fields, size_t points) {
+   locals. The family parameters are already locals (check_family). Each
+   branch has the family at the parameters and RESULT, the result indices
+   of CTOR (S6), NULL for a uniform family. */
+static const Core *boundary_core(Checker *c, uint32_t fam, const Ctor *ctor, const FieldInfo *fields, size_t points, const Core *const *result) {
   Machine *m = c->m;
   uint32_t p = m->families[fam].param_count;
-  const Value **params = arena_alloc(m->arena, ((size_t)p + 1u) * sizeof *params);
+  uint32_t q = result == NULL ? p : p + m->families[fam].index_count;
+  const Value **params = arena_alloc(m->arena, ((size_t)q + 1u) * sizeof *params);
   Term *tube = arena_alloc(m->arena, sizeof *tube);
   const Term *cover = NULL;
   const Core *phi;
@@ -2697,13 +2745,19 @@ static const Core *boundary_core(Checker *c, uint32_t fam, const Ctor *ctor, con
   for (j = 0; j < points; j++)
     if (!push(c, fields[j].name, here(c, fields[j].type)))
       return NULL;
+  /* The result indices at the parameters and the point fields (S6). */
+  for (i = p; i < q; i++) {
+    params[i] = here(c, result[i - p]);
+    if (params[i] == NULL)
+      return NULL;
+  }
   for (j = points; j < ctor->field_count; j++) {
     cover = cover_term(c, ctor, cover, ctor->fields[j].name);
     if (cover == NULL || !push_interval(c, ctor->fields[j].name))
       return NULL;
   }
   phi = check(c, cover, interval_type(c));
-  a = quote_value(m, c->level, val_op(m, VAL_OP, OP_FAMILY, fam, 0, params, p));
+  a = quote_value(m, c->level, val_op(m, VAL_OP, OP_FAMILY, fam, 0, params, q));
   if (phi == NULL || a == NULL)
     return NULL;
   tube->kind = TERM_LAM;
@@ -2719,7 +2773,7 @@ static const Core *boundary_core(Checker *c, uint32_t fam, const Ctor *ctor, con
   for (i = 0; i < n; i++) {
     bs[i].body = hcomp_branch(c, NULL, a, &bs[i]);
     if (bs[i].body == NULL)
-      return NULL;
+      return nul(branch_index(c, fam, &bs[i]));
   }
   if (!system_overlaps(c, "_", bs, n))
     return NULL;
@@ -2733,23 +2787,46 @@ static const Core *boundary_core(Checker *c, uint32_t fam, const Ctor *ctor, con
    (SYSTEM_OVERLAP). The core is OP_SYSTEM, each body under a path binder
    that no term can use, as an hcomp tube. The context comes back as it
    was. */
-static const Core *check_boundary(Checker *c, uint32_t fam, const Ctor *ctor, const FieldInfo *fields, size_t points) {
+static const Core *check_boundary(Checker *c, uint32_t fam, const Ctor *ctor, const FieldInfo *fields, size_t points, const Core *const *result) {
   const Scope *scope = c->scope;
   const Env *env = c->env;
   uint32_t level = c->level;
-  const Core *sys = boundary_core(c, fam, ctor, fields, points);
+  const Core *sys = boundary_core(c, fam, ctor, fields, points, result);
   c->scope = scope;
   c->env = env;
   c->level = level;
   return sys;
 }
 
+/* The result `: F params indices` of CTOR under its POINTS point fields
+   (S6). A constructor of an indexed sort states it: its head is the sort
+   at its own parameters, and its index arguments check against the index
+   telescope. A constructor of a uniform sort can state the sort at its
+   parameters. RESULT gets the index cores, or NULL. */
+static int ctor_result(Checker *c, uint32_t fam, const Ctor *ctor, uint32_t points, const Core *const **result) {
+  const FamilyInfo *f = &c->m->families[fam];
+  uint64_t level = 0;
+  const Core *t;
+  *result = NULL;
+  if (ctor->result == NULL)
+    return f->index_count == 0u ? 1 : FAIL(c, "HIT_INDEX", "the constructor %s of the indexed family %s needs a result `: %s ...` after its fields", ctor->name, f->name, f->name);
+  t = check_type(c, ctor->result, &level);
+  if (t == NULL)
+    return 0;
+  if (!own_family(c->m, fam, t, points) || t->inst != fam)
+    return FAIL(c, "HIT_INDEX", "the result of %s must be %s at its own parameters", ctor->name, f->name);
+  *result = f->index_count == 0u ? NULL : t->args + f->param_count;
+  return 1;
+}
+
 /* A constructor takes point fields, then (a path constructor) 1 or 2
-   interval fields `(i : I)` and a boundary. */
-static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
+   interval fields `(i : I)` and a boundary. It fills the reserved slot
+   SLOT (S6). */
+static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor, uint32_t slot) {
   Machine *m = c->m;
   FieldInfo *fields = arena_alloc(m->arena, (ctor->field_count + 1u) * sizeof *fields);
-  CtorInfo *ci = &m->ctors[m->ctor_count];
+  CtorInfo *ci = &m->ctors[slot];
+  const Core *const *result = NULL;
   const Scope *scope = c->scope;
   const Env *env = c->env;
   uint32_t level = c->level;
@@ -2780,6 +2857,8 @@ static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
       return 0;
     points += !interval;
   }
+  if (!ctor_result(c, fam, ctor, (uint32_t)points, &result))
+    return 0;
   c->scope = scope;
   c->env = env;
   c->level = level;
@@ -2792,7 +2871,7 @@ static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
   if (points == ctor->field_count && ctor->boundary != NULL)
     return FAIL(c, "DOMAIN_FAMILY", "%s has a boundary but no interval field; only a path constructor has a boundary", ctor->name);
   if (ctor->boundary != NULL) {
-    boundary = check_boundary(c, fam, ctor, fields, points);
+    boundary = check_boundary(c, fam, ctor, fields, points, result);
     if (boundary == NULL)
       return 0;
   }
@@ -2803,7 +2882,7 @@ static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
   ci->event = 0;
   ci->interval_count = (uint32_t)(ctor->field_count - points);
   ci->boundary = boundary;
-  m->ctor_count++;
+  ci->result = result;
   return 1;
 }
 
@@ -2851,6 +2930,7 @@ static int check_event(Checker *c, uint32_t fam, const Decl *d) {
   ci->event = 1;
   ci->interval_count = 0u;
   ci->boundary = NULL;
+  ci->result = NULL;
   m->ctor_count++;
   m->families[fam].ctor_count++;
   return 1;
@@ -2870,34 +2950,154 @@ static int check_events(Checker *c, uint32_t fam) {
   return 1;
 }
 
-/* A family is in scope in its own fields, so a field can be recursive. */
-static int check_family(Checker *c, const Decl *d) {
+static int kernel_sig(Checker *c, const Decl *d);
+
+/* T has a free variable NAME. A local binder can shadow a block sort. */
+static int names_var(const Term *t, const char *name) {
+  if (t == NULL)
+    return 0;
+  if (t->kind == TERM_VAR && t->name != NULL && strcmp(t->name, name) == 0)
+    return 1;
+  if (names_var(t->left, name))
+    return 1;
+  if ((t->kind == TERM_PI || t->kind == TERM_LAM || t->kind == TERM_SIGMA) && t->name != NULL && strcmp(t->name, name) == 0)
+    return 0;
+  return names_var(t->right, name);
+}
+
+/* The header of the sort S of the block FIRST of COUNT sorts names no
+   sort from S on (S6): its parameters and its index telescope can name
+   only the earlier sorts (BLOCK_ORDER). */
+static int header_order(Checker *c, const Decl *first, uint32_t s, uint32_t count) {
+  const Decl *d = &first[s];
+  uint32_t t;
+  size_t i;
+  for (t = s; t < count; t++) {
+    int named = 0;
+    for (i = 0; i < d->param_count; i++) {
+      named |= names_var(d->params[i].type, first[t].name);
+      if (strcmp(d->params[i].name, first[t].name) == 0)
+        break;
+    }
+    if (i == d->param_count)
+      named |= names_var(d->index, first[t].name);
+    if (named)
+      return FAIL(c, "BLOCK_ORDER", "the header of %s names the block sort %s; a header can name only the earlier sorts of its block", d->name, first[t].name);
+  }
+  return 1;
+}
+
+/* The header of the block sort D as the family FAM of the block FIRST of
+   COUNT sorts (S6): the parameters, then the index telescope `T1 -> ...
+   -> Type 0`, in an empty context. Prop and SProp are not types there
+   (NAME_UNKNOWN, rule R4). The constructor slots of D are reserved here,
+   so the constructors of a sort stay contiguous. */
+static int check_header(Checker *c, const Decl *d, uint32_t fam, uint32_t first, uint32_t count, uint64_t universe) {
   Machine *m = c->m;
-  uint32_t fam = m->family_count;
   FamilyInfo *f = &m->families[fam];
   const Core **params = arena_alloc(m->arena, (d->param_count + 1u) * sizeof *params);
+  const Core **indices;
+  const Term *t;
+  uint32_t n = 0;
   size_t i;
-  if (params == NULL)
+  for (t = d->index; t != NULL && t->kind == TERM_PI; t = t->right)
+    n++;
+  indices = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *indices);
+  if (params == NULL || indices == NULL)
     return FAIL(c, "OOM", "out of memory");
+  c->scope = NULL;
+  c->env = NULL;
+  c->level = 0;
   for (i = 0; i < d->param_count; i++) {
     uint64_t level = 0;
     params[i] = check_type(c, d->params[i].type, &level);
     if (params[i] == NULL || !push(c, d->params[i].name, here(c, params[i])))
       return 0;
   }
+  for (t = d->index, i = 0; t != NULL && t->kind == TERM_PI; t = t->right, i++) {
+    uint64_t level = 0;
+    indices[i] = check_type(c, t->left, &level);
+    if (indices[i] == NULL || !push(c, t->name == NULL ? "_" : t->name, here(c, indices[i])))
+      return 0;
+  }
+  if (t != NULL && (t->kind != TERM_UNIV || t->nat != 0u))
+    return FAIL(c, "TYPE_MISMATCH", "the index telescope of %s must end in Type 0", d->name);
   f->name = d->name;
   f->param_types = params;
   f->param_count = (uint32_t)d->param_count;
+  f->index_types = indices;
+  f->index_count = n;
+  f->block_first = first;
+  f->block_count = count;
   f->first_ctor = m->ctor_count;
   f->ctor_count = (uint32_t)d->ctor_count;
+  f->universe = universe;
   f->origin = d->origin;
-  m->family_count++;
-  c->self = fam;
   for (i = 0; i < d->ctor_count; i++) {
-    if (!check_ctor(c, fam, &d->ctors[i]))
-      return 0;
+    memset(&m->ctors[m->ctor_count + i], 0, sizeof m->ctors[0]);
+    m->ctors[m->ctor_count + i].family = fam;
   }
-  return d->origin != ORIGIN_PROGRAM && strcmp(d->name, "Out") == 0 ? check_events(c, fam) : 1;
+  m->ctor_count += (uint32_t)d->ctor_count;
+  m->family_count++;
+  return 1;
+}
+
+/* A block of sorts D[0 .. block_count) (S6); a family outside a block is a
+   block of one. All headers bind first, then the point constructors of
+   all sorts, then the path constructors of all sorts, so a boundary can
+   name a point constructor of a later sort. The sorts of the block are in
+   scope in the fields, so a field can be recursive. */
+static int check_family(Checker *c, const Decl *d) {
+  Machine *m = c->m;
+  uint32_t first = m->family_count;
+  uint32_t count = d->block_count > 0u ? (uint32_t)d->block_count : 1u;
+  uint32_t first_ctor = m->ctor_count;
+  uint64_t *universes = arena_alloc(m->arena, (size_t)count * sizeof *universes);
+  uint32_t s;
+  int pass;
+  if (universes == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  memset(universes, 0, (size_t)count * sizeof *universes);
+  c->self = first;
+  c->self_count = count;
+  /* A later sort can raise the universe of an earlier sort. Recheck
+     headers and constructors until these monotone universe bounds settle,
+     so no core retains an elaboration made at a provisional lower level. */
+  for (;;) {
+    int changed = 0;
+    m->family_count = first;
+    m->ctor_count = first_ctor;
+    for (s = 0; s < count; s++) {
+      m->def = d[s].name;
+      if (s > 0u && (!kernel_sig(c, &d[s]) || !name_free(c, d[s].name)))
+        return 0;
+      if (!header_order(c, d, s, count) || !check_header(c, &d[s], first + s, first, count, universes[s]))
+        return 0;
+    }
+    for (pass = 0; pass < 2; pass++) {
+      for (s = 0; s < count; s++) {
+        const FamilyInfo *f = &m->families[first + s];
+        size_t i;
+        m->def = d[s].name;
+        c->scope = NULL;
+        c->env = NULL;
+        c->level = 0;
+        for (i = 0; i < d[s].param_count; i++)
+          if (!push(c, d[s].params[i].name, here(c, f->param_types[i])))
+            return 0;
+        for (i = 0; i < d[s].ctor_count; i++)
+          if ((d[s].ctors[i].boundary != NULL) == (pass == 1) && !check_ctor(c, first + s, &d[s].ctors[i], f->first_ctor + (uint32_t)i))
+            return 0;
+      }
+    }
+    for (s = 0; s < count; s++) {
+      changed |= universes[s] != m->families[first + s].universe;
+      universes[s] = m->families[first + s].universe;
+    }
+    if (!changed)
+      break;
+  }
+  return d->origin != ORIGIN_PROGRAM && count == 1u && strcmp(d->name, "Out") == 0 ? check_events(c, first) : 1;
 }
 
 /* Rule D-9 (slice K3c). The argument A of the history field K of the state
@@ -3177,8 +3377,8 @@ static int check_state(Checker *c, const Decl *d) {
     return FAIL(c, "REFUSE_STATE", "a program can declare one state only");
   if (strcmp(d->name, "State") != 0)
     return FAIL(c, "REFUSE_STATE", "the state type must have the name State, found %s", d->name);
-  if (d->param_count != 0u || d->ctor_count != 1u)
-    return FAIL(c, "REFUSE_STATE", "the state must have no parameters and one constructor");
+  if (d->param_count != 0u || d->ctor_count != 1u || d->index != NULL)
+    return FAIL(c, "REFUSE_STATE", "the state must have no parameters or index telescope and one constructor");
   if (!name_free(c, d->name) || !check_family(c, d))
     return 0;
   ci = &m->ctors[m->families[m->family_count - 1u].first_ctor];
@@ -3255,9 +3455,12 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag, C
     c.level = 0;
     c.depth = 0;
     c.self = NO_FAMILY;
+    c.self_count = 0u;
     m->def = decls->items[i].name;
     if (!check_decl(&c, &decls->items[i]))
       return 0;
+    /* The other sorts of a block are checked with its first sort (S6). */
+    i += decls->items[i].kind == DECL_FAMILY && decls->items[i].block_count > 1u ? decls->items[i].block_count - 1u : 0u;
   }
   m->def = NULL;
   return 1;

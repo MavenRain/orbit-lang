@@ -27,6 +27,7 @@ static const struct {
   {"Sigma", TOK_KW_SIGMA},
   {"state", TOK_KW_STATE},
   {"event", TOK_KW_EVENT},
+  {"and", TOK_KW_AND},
 };
 
 const char *tok_kind_name(TokKind kind) {
@@ -59,6 +60,7 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_KW_SIGMA: return "'Sigma'";
     case TOK_KW_STATE: return "'state'";
     case TOK_KW_EVENT: return "'event'";
+    case TOK_KW_AND: return "'and'";
   }
   return "a token";
 }

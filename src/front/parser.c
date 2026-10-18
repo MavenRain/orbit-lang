@@ -159,6 +159,7 @@ static int starts_atom(TokKind kind) {
     case TOK_KW_AXIOM:
     case TOK_KW_STATE:
     case TOK_KW_EVENT:
+    case TOK_KW_AND:
       return 0;
   }
   return 0;
@@ -394,6 +395,7 @@ static const Term *parse_atom(Parser *p) {
     case TOK_KW_AXIOM:
     case TOK_KW_STATE:
     case TOK_KW_EVENT:
+    case TOK_KW_AND:
       break;
   }
   fail_at(p, tok, "a term");
@@ -530,7 +532,9 @@ static int parse_family(Parser *p, Decl *d) {
   d->name = take_name(p, "a family name");
   if (d->name == NULL) return 0;
   p->def = d->name;
-  if (!parse_fields(p, 0, &d->params, &d->param_count) || !expect(p, TOK_DEFINE, "':='")) return 0;
+  if (!parse_fields(p, 0, &d->params, &d->param_count)) return 0;
+  d->index = eat(p, TOK_COLON) ? parse_term(p) : NULL;
+  if ((d->index == NULL && p->diag->set) || !expect(p, TOK_DEFINE, "':='")) return 0;
   Ctor *ctors = NULL;
   size_t count = 0;
   size_t cap = 0;
@@ -543,6 +547,8 @@ static int parse_family(Parser *p, Decl *d) {
     ctor->col = cur(p)->col;
     ctor->name = take_name(p, "a constructor name");
     if (ctor->name == NULL || !parse_fields(p, d->is_state, &ctor->fields, &ctor->field_count)) return 0;
+    ctor->result = eat(p, TOK_COLON) ? parse_term(p) : NULL;
+    if (ctor->result == NULL && p->diag->set) return 0;
     ctor->boundary = at(p, TOK_LBRACKET) ? parse_system(p) : NULL;
     if (ctor->boundary == NULL && p->diag->set) return 0;
   } while (eat(p, TOK_BAR));
@@ -563,6 +569,7 @@ static int parse_event(Parser *p, Decl *d) {
   d->body = NULL;
   d->params = NULL;
   d->param_count = 0;
+  d->index = NULL;
   d->name = take_name(p, "an event name");
   if (d->name == NULL) return 0;
   p->def = d->name;
@@ -571,10 +578,28 @@ static int parse_event(Parser *p, Decl *d) {
   ctor->name = d->name;
   ctor->line = d->line;
   ctor->col = d->col;
+  ctor->result = NULL;
   ctor->boundary = NULL;
   d->ctors = ctor;
   d->ctor_count = 1u;
   return parse_fields(p, 0, &ctor->fields, &ctor->field_count);
+}
+
+/* `and NAME params [: index] := ctor | ...` (S6): the next sort of the
+   block that FIRST starts. Only a `family` declaration starts a block. */
+static int at_and(const Parser *p, const Decl *first) {
+  return at(p, TOK_KW_AND) && first->kind == DECL_FAMILY && !first->is_state && !first->is_event;
+}
+
+static int parse_and(Parser *p, Decl *d) {
+  const Token *tok = cur(p);
+  p->def = NULL;
+  d->origin = p->origin;
+  d->line = tok->line;
+  d->col = tok->col;
+  d->is_state = 0;
+  d->is_event = 0;
+  return parse_family(p, d);
 }
 
 static int parse_decl(Parser *p, Decl *d) {
@@ -614,6 +639,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_KW_FUN:
     case TOK_KW_TYPE:
     case TOK_KW_SIGMA:
+    case TOK_KW_AND:
       break;
   }
   return fail_at(p, tok, "'def', 'axiom', 'family', 'state' or 'event'");
@@ -628,9 +654,19 @@ int parse_source(Arena *arena, const char *source, Origin origin, const TokenLis
   size_t count = list->count;
   size_t cap = list->cap;
   while (!at(&p, TOK_EOF)) {
+    size_t first = count;
     items = grow(&p, items, count, &cap, sizeof *items);
     if (items == NULL || !parse_decl(&p, &items[count])) return 0;
     count++;
+    while (at_and(&p, &items[first])) {
+      items = grow(&p, items, count, &cap, sizeof *items);
+      if (items == NULL || !parse_and(&p, &items[count])) return 0;
+      count++;
+    }
+    for (size_t k = first; k < count; k++) {
+      items[k].block_first = first;
+      items[k].block_count = count - first;
+    }
   }
   list->items = items;
   list->count = count;
