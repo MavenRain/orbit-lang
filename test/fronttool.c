@@ -146,6 +146,28 @@ int main(void) {
                             "Even Nat", "transp (fun (i : I) => Even Nat) i0 (es Nat (os Nat (ez Nat)))");
   ok &= domain("family Even := ez | es (oddPrev : Odd) and Odd := os (evenPrev : Even)\n"
                "def result : Nat := fold 0 (fun n => natAdd n 1) (es (os ez))", "TYPE_MISMATCH");
+  /* Block folds print their targets before their constructor cases. */
+  ok &= normal_roundtrip_in("family Even := ez | es (oddPrev : Odd) and Odd := os (evenPrev : Even)",
+                            "Even -> Nat", "fun x => fold Nat Unit 0 (fun u => 1) (fun n => unit) x");
+  ok &= normal_roundtrip_in("family Even := ez | es (oddPrev : Odd) and Odd := os (evenPrev : Even)",
+                            "Odd -> Unit", "fun x => fold Nat Unit 0 (fun u => 1) (fun n => unit) x");
+  ok &= domain("family Even := ez | es (oddPrev : Odd) and Odd := os (evenPrev : Even)\n"
+               "def point : Path Nat (fold Nat Unit 0 (fun u => 1) (fun n => unit) (es (os ez))) 1 := refl\n"
+               "def other : Path Unit (fold Nat Unit 0 (fun u => 1) (fun n => unit) (os ez)) unit := refl", NULL);
+  /* A path field over a sibling sort folds at that sibling. */
+  ok &= domain("family Box := box (boxLeft : Item) (boxRight : Item) (boxPath : Path Item boxLeft boxRight) "
+               "and Item := item\n"
+               "def result : Path Nat 7 7 := fun (i : I) => "
+               "fold Nat Unit (fun x y p => elim (fun (u : Unit) => Nat) 7 (p @ i)) unit (box item item refl)", NULL);
+  /* Every sort's cases must use the scrutinee's parameter telescope. */
+  ok &= domain("family F (A : Type 0) := makeF (fValue : A) and G (n : Nat) := makeG\n"
+               "def result : Unit := fold Unit Unit (fun x => unit) unit (makeG 7)", "TYPE_MISMATCH");
+  ok &= domain("family F (A : Type 0) := makeF (fValue : A) and G := makeG\n"
+               "def result : Unit := fold Unit Unit (fun x => unit) unit makeG", "TYPE_MISMATCH");
+  ok &= domain("family L (A : Type 0) (a : A) := leftL (lValue : A) "
+               "and R (A : Type 0) (a : A) := rightR (rLeft : L A a)\n"
+               "def firstL : Path Nat (fold Nat Unit (fun n => n) (fun n => unit) (leftL Nat 7 8)) 8 := refl\n"
+               "def secondR : Path Unit (fold Nat Unit (fun n => n) (fun n => unit) (rightR Nat 7 (leftL Nat 7 8))) unit := refl", NULL);
   /* Header folds must not see the zeroed, reserved constructor signatures. */
   ok &= domain("family A := a (n : Nat) and B (x : A) (y : fold Unit x) := b\n"
                "def value : B (a 0) unit := b (a 0) unit", "HIT_BOUNDARY");

@@ -37,6 +37,11 @@ typedef struct {
   uint32_t eta_count;
   uint32_t self;       /* the first family of the block whose fields are checked, or NO_FAMILY */
   uint32_t self_count; /* the number of sorts of that block (S6) */
+  /* A block fold (S6): the target of each sort, while a case type is made,
+     or NULL. */
+  const Value *const *fold_targets;
+  uint32_t fold_first;
+  uint32_t fold_count;
   uint32_t self_uses;  /* the uses of a sort of that block in the current field */
   /* The levels of the earlier point fields of the current field, from
      FIELD_BASE up to FIELD_TOP (S4 item 13), and the uses of them. */
@@ -974,6 +979,12 @@ static const Core *fold_simple(Call *k, const Core *s, const Value *st) {
    level c->level + k, its type at the parameters ENV and the earlier
    fields (S4 item 13). A path field `Path F x y` arrives folded, so its
    type is `Path RES x' y'` (S4 item 14). */
+/* The folded type of a recursive field of type T: the target of its sort
+   in a block fold (S6), else RES. */
+static const Value *sort_res(const Checker *c, const Core *t, const Value *res) {
+  return c->fold_targets != NULL && t != NULL && t->kind == CORE_OP && t->op == OP_FAMILY && t->inst >= c->fold_first && t->inst - c->fold_first < c->fold_count ? c->fold_targets[t->inst - c->fold_first] : res;
+}
+
 static const Core *case_fields(Checker *c, const CtorInfo *ctor, const Env *env, const Value *res, const Core *body) {
   Machine *m = c->m;
   uint32_t n = ctor->field_count;
@@ -987,9 +998,11 @@ static const Core *case_fields(Checker *c, const CtorInfo *ctor, const Env *env,
   for (i = 0; i < n; i++) {
     const FieldInfo *field = &ctor->fields[i];
     uint32_t at = c->level + i;
-    if (field->over_recursive && !field->path)
+    /* A recursive field at an index over an earlier recursive field (S6)
+       arrives folded: the fold is not dependent, so the index goes. */
+    if (field->over_recursive && !field->path && !field->recursive)
       return nul(FAIL(c, "HIT_BOUNDARY", "the fold of %s has no case type for the field %s: a field over an earlier recursive field must be Path F x y, with x and y earlier recursive fields", ctor->name, field->name));
-    types[i] = field->path ? core_ends(c, CORE_PATHP, "_", NULL, quote_value(m, at + 1u, res), quote_value(m, at, val_var(m, c->level + field->ends[0])), quote_value(m, at, val_var(m, c->level + field->ends[1]))) : quote_value(m, at, field->recursive ? res : eval_core(m, env, field->type));
+    types[i] = field->path ? core_ends(c, CORE_PATHP, "_", NULL, quote_value(m, at + 1u, sort_res(c, field->type->b, res)), quote_value(m, at, val_var(m, c->level + field->ends[0])), quote_value(m, at, val_var(m, c->level + field->ends[1]))) : quote_value(m, at, field->recursive ? sort_res(c, field->type, res) : eval_core(m, env, field->type));
     env = env_push(m, env, val_var(m, c->level + i));
     if (types[i] == NULL || env == NULL)
       return NULL;
@@ -1013,6 +1026,8 @@ static const Value *case_type(Checker *c, const CtorInfo *ctor, const Env *env, 
 static const Value *fold_image(Checker *c, uint32_t fam, const Core *const *cores, uint32_t done, const Value *v, const Env *env, uint32_t level) {
   Machine *m = c->m;
   const FamilyInfo *f = &m->families[fam];
+  /* The constructor slots of a block are contiguous (S6). */
+  uint32_t base = m->families[f->block_first].first_ctor;
   const CtorInfo *ci;
   const Value *acc;
   uint32_t i;
@@ -1024,10 +1039,10 @@ static const Value *fold_image(Checker *c, uint32_t fam, const Core *const *core
      the same level, and its ends are earlier recursive fields. */
   if (v->kind == VAL_PAPP && v->dom != NULL && v->dom->kind == VAL_VAR && v->dom->nat >= c->level)
     return v;
-  if (!val_is(v, OP_CTOR) || v->inst < f->first_ctor || v->inst - f->first_ctor >= done || m->ctors[v->inst].interval_count != 0u)
+  if (!val_is(v, OP_CTOR) || v->inst < base || v->inst - base >= done || m->ctors[v->inst].interval_count != 0u)
     return vnul(FAIL(c, "HIT_BOUNDARY", "the fold cannot map the boundary term %s: a boundary term must be a field, a path field at an interval, or an earlier point constructor", show(c, v)));
   ci = &m->ctors[v->inst];
-  acc = here(c, cores[v->inst - f->first_ctor]);
+  acc = here(c, cores[v->inst - base]);
   for (i = 0; i < ci->field_count && acc != NULL; i++) {
     const FieldInfo *field = &ci->fields[i];
     const Value *arg = v->args[f->param_count + i];
@@ -1158,6 +1173,79 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   return core_op(c, OP_FOLD_FAMILY, st->inst, 0, cores, f->ctor_count + 2u);
 }
 
+/* The case of the constructor slot J of the block fold of ST into the
+   TARGETS of the sorts from FIRST (S6). The constructor slots start at
+   BASE; CORES holds the TOTAL cases. */
+static int block_case(Call *k, const Value *st, const Value *const *targets, uint32_t first, uint32_t base, const Core **cores, uint32_t total, uint32_t j) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const CtorInfo *ctor = &m->ctors[base + j];
+  const Value *res = targets[ctor->family - first];
+  const Value *ct;
+  c->fold_targets = targets;
+  c->fold_first = first;
+  c->fold_count = m->families[first].block_count;
+  ct = ctor->interval_count == 0u ? case_type(c, ctor, env_of(c, st->args, m->families[first].param_count), res) : path_case_type(c, base + j, st, res, cores, total);
+  c->fold_targets = NULL;
+  cores[j] = ct == NULL ? NULL : check(c, k->args[c->fold_count + j], ct);
+  return cores[j] != NULL;
+}
+
+/* fold T1 .. Tn case... x over a block of n sorts (S6): one target type
+   for each sort, then one case for each constructor of each sort in slot
+   order, then x. A recursive field of a sort arrives folded at the target
+   of that sort. The point cases are checked first, so a boundary can name
+   a point constructor of a later sort. The core holds the cases, the n
+   targets, the target of x and x. */
+static const Core *fold_block(Call *k, const Core *s, const Value *st) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const FamilyInfo *f = &m->families[st->inst];
+  uint32_t first = f->block_first;
+  uint32_t n = f->block_count;
+  const FamilyInfo *last = &m->families[first + n - 1u];
+  uint32_t base = m->families[first].first_ctor;
+  uint32_t total = last->first_ctor + last->ctor_count - base;
+  const Value **targets = arena_alloc(m->arena, (size_t)n * sizeof *targets);
+  const Core **cores = arena_alloc(m->arena, ((size_t)total + n + 2u) * sizeof *cores);
+  uint32_t j;
+  int pass;
+  if (targets == NULL || cores == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  if (k->argc != n + total + 1u)
+    return nul(FAIL(c, "TYPE_MISMATCH", "fold over the block of %s needs %u target types, one case for each of its %u constructors, and the value; found %u arguments", f->name, (unsigned)n, (unsigned)total, (unsigned)k->argc));
+  /* Every case is instantiated with the scrutinee's parameters. Check
+     that those parameters inhabit the telescope of every block sort. */
+  for (j = 0; j < n; j++) {
+    const FamilyInfo *sort = &m->families[first + j];
+    uint32_t p;
+    if (sort->param_count != f->param_count)
+      return nul(FAIL(c, "TYPE_MISMATCH", "fold over the block of %s needs the same parameter telescope for every sort", f->name));
+    for (p = 0; p < f->param_count; p++) {
+      const Env *env = env_of(c, st->args, p);
+      if (!expect(c, eval_core(m, env, f->param_types[p]), eval_core(m, env, sort->param_types[p])))
+        return NULL;
+    }
+  }
+  memset(cores, 0, ((size_t)total + n + 2u) * sizeof *cores);
+  for (j = 0; j < n; j++) {
+    uint64_t level = 0;
+    cores[total + j] = check_type(c, k->args[j], &level);
+    targets[j] = cores[total + j] == NULL ? NULL : here(c, cores[total + j]);
+    if (targets[j] == NULL)
+      return NULL;
+  }
+  for (pass = 0; pass < 2; pass++)
+    for (j = 0; j < total; j++)
+      if ((m->ctors[base + j].interval_count != 0u) == (pass == 1) && !block_case(k, st, targets, first, base, cores, total, j))
+        return NULL;
+  cores[total + n] = cores[total + (st->inst - first)];
+  cores[total + n + 1u] = s;
+  k->used = n + total + 1u;
+  k->type = targets[st->inst - first];
+  return core_op(c, OP_FOLD_FAMILY, st->inst, 0, cores, total + n + 2u);
+}
+
 static int simple_scrutinee(const Value *t) {
   return val_is(t, OP_NAT) || val_is(t, OP_LIST);
 }
@@ -1178,8 +1266,10 @@ static const Core *rule_fold(Call *k) {
        constructors are checked (S6), so the test is the block. */
     if (in_block(c, fam))
       return nul(FAIL(c, "HIT_BOUNDARY", "a constructor boundary cannot fold %s before all of its constructors are checked", c->m->families[fam].name));
-    if (c->m->families[fam].block_count > 1u)
-      return nul(FAIL(c, "TYPE_MISMATCH", "fold over the mutual block of %s needs cases for every sort; mutual folds are not available yet", c->m->families[fam].name));
+    if (c->m->families[fam].block_count > 1u) {
+      k->hint = k->outer;
+      return fold_block(k, s, st);
+    }
   }
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].ctor_count + 1u == k->argc) {
     k->hint = k->outer;
@@ -3456,6 +3546,7 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag, C
     c.depth = 0;
     c.self = NO_FAMILY;
     c.self_count = 0u;
+    c.fold_targets = NULL;
     m->def = decls->items[i].name;
     if (!check_decl(&c, &decls->items[i]))
       return 0;

@@ -545,7 +545,8 @@ Fold. Non-dependent only.
   becomes the target. Index fields stay.
 - Block of n sorts: the first n arguments are the target types, one for
   each sort, then one case for each constructor of each sort in
-  declaration order, then the value. A one-sort family keeps the hint form.
+  declaration order, then the value. The sorts must share a parameter
+  telescope at the scrutinee's arguments. A one-sort family keeps the hint form.
 - Eval: fold_family, fold_path and fold_square apply at each index. A
   field of a sibling sort folds with the same case vector at that sort.
   transp at an indexed family with an index line that is not constant

@@ -61,6 +61,21 @@ family Bag (A : Type 0) : Size -> Type 0 := bagNil : Bag A sz0
     [ ~i -> bagCons A (szS swapSize) swapFirst (bagCons A swapSize swapSecond swapTail), i -> bagCons A (szS swapSize) swapSecond (bagCons A swapSize swapFirst swapTail) ]
   | bagSquash (squashSize : Size) (bagFrom : Bag A squashSize) (bagTo : Bag A squashSize) (bagLeft : Path (Bag A squashSize) bagFrom bagTo) (bagRight : Path (Bag A squashSize) bagFrom bagTo) (i : I) (j : I) : Bag A squashSize
     [ ~i -> bagLeft @ j, i -> bagRight @ j, ~j -> bagFrom, j -> bagTo ]
+-- The charter and its ratifications (S6, O20): an inductive-inductive
+-- block. Ratified R c is a rule ratified at the charter c, adopt adds a
+-- ratified rule to a charter, and adoptTwice is law 4 in the type: a
+-- second adoption of the same rule is a path from the first. A squash at
+-- each sort in the form of Trunc0 squash0 makes each sort a set. Field
+-- names are global (rule R4), so each has the prefix of its constructor.
+family Charter (R : Type 0) := genesis
+  | adopt (adoptBase : Charter R) (adoptRule : Ratified R adoptBase)
+  | adoptTwice (twiceBase : Charter R) (twiceRule : R) (i : I)
+    [ ~i -> adopt R twiceBase (ratify R twiceBase twiceRule), i -> adopt R (adopt R twiceBase (ratify R twiceBase twiceRule)) (ratify R (adopt R twiceBase (ratify R twiceBase twiceRule)) twiceRule) ]
+  | charterSquash (charterFrom : Charter R) (charterTo : Charter R) (charterLeft : Path (Charter R) charterFrom charterTo) (charterRight : Path (Charter R) charterFrom charterTo) (i : I) (j : I)
+    [ ~i -> charterLeft @ j, i -> charterRight @ j, ~j -> charterFrom, j -> charterTo ]
+and Ratified (R : Type 0) : Charter R -> Type 0 := ratify (ratifyBase : Charter R) (ratifyRule : R) : Ratified R ratifyBase
+  | ratifiedSquash (ratifiedAt : Charter R) (ratifiedFrom : Ratified R ratifiedAt) (ratifiedTo : Ratified R ratifiedAt) (ratifiedLeft : Path (Ratified R ratifiedAt) ratifiedFrom ratifiedTo) (ratifiedRight : Path (Ratified R ratifiedAt) ratifiedFrom ratifiedTo) (i : I) (j : I) : Ratified R ratifiedAt
+    [ ~i -> ratifiedLeft @ j, i -> ratifiedRight @ j, ~j -> ratifiedFrom, j -> ratifiedTo ]
 
 -- Equivalences (S3a, R3 (a)): contractible types, fibers, isEquiv and
 -- Equiv as Sigma types (the map, then for each y the center pack x p and

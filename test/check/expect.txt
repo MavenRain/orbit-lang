@@ -145,3 +145,4 @@ ua-non-equiv.lang TYPE_MISMATCH
 glue-prop.lang NAME_UNKNOWN
 isequiv-two-proofs.lang PATH_END
 ua-two-proofs.lang PATH_UIP
+bag-no-squash.lang TYPE_MISMATCH

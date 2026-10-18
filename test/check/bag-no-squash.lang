@@ -1,0 +1,4 @@
+-- A fold of Bag needs a case for each constructor: bagNil, bagCons, swap
+-- and bagSquash. This fold has no bagSquash case, so it has no isSet
+-- proof (S6, the missing coherence case).
+def f : Bag Size sz0 -> Size := fun (b : Bag Size sz0) => fold sz0 (fun (k : Size) (h : Size) (r : Size) => szS r) (fun (k : Size) (h : Size) (g : Size) (r : Size) => fun (i : I) => szS (szS r)) b

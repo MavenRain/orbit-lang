@@ -1,10 +1,25 @@
 -- Indexed HITs (S6, O20, USER ruling S6): Bag values at explicit sizes
 -- and one path by swap. A constructor takes the parameter A, then its
 -- fields; its index is its result at the fields. The elements are Size
--- values, as Nat is internal. The folds are S6 slice B3.
+-- values, as Nat is internal.
 def sizeOne : Size := szS sz0
 def bagOne : Bag Size sizeOne := bagCons Size sz0 sizeOne (bagNil Size)
 def bagTwo : Bag Size (szS sizeOne) := bagCons Size sizeOne sz0 bagOne
 def bagSwapped : Bag Size (szS sizeOne) := bagCons Size sizeOne sizeOne (bagCons Size sz0 sz0 (bagNil Size))
 def bagSwap : Path (Bag Size (szS sizeOne)) bagTwo bagSwapped :=
   fun (i : I) => swap Size sz0 sz0 sizeOne (bagNil Size) i
+-- succ0 maps szS over Trunc0 Size, as map0 in quot.lang.
+def succ0 : Trunc0 Size -> Trunc0 Size :=
+  fun (t : Trunc0 Size) => fold (fun (s : Size) => trunc0 Size (szS s))
+    (fun (x : Trunc0 Size) (y : Trunc0 Size) (p : Path (Trunc0 Size) x y) (q : Path (Trunc0 Size) x y) => fun (i : I) => fun (j : I) => squash0 Size x y p q i j) t
+-- The size count (S6 B3): a fold over Bag into the set Trunc0 Size. A
+-- case takes the fields, and a recursive field at any index arrives
+-- folded. Both ends of swap count two more, so the swap case is a
+-- constant path. The bagSquash case is squash0.
+def bagCount : (n : Size) -> Bag Size n -> Trunc0 Size :=
+  fun (n : Size) (b : Bag Size n) => fold (trunc0 Size sz0)
+    (fun (k : Size) (h : Size) (r : Trunc0 Size) => succ0 r)
+    (fun (k : Size) (h : Size) (g : Size) (r : Trunc0 Size) => fun (i : I) => succ0 (succ0 r))
+    (fun (k : Size) (x : Trunc0 Size) (y : Trunc0 Size) (p : Path (Trunc0 Size) x y) (q : Path (Trunc0 Size) x y) => fun (i : I) => fun (j : I) => squash0 Size x y p q i j) b
+def bagTwoCount : Trunc0 Size := bagCount (szS sizeOne) bagTwo
+def bagSwapCount : Trunc0 Size := bagCount (szS sizeOne) (bagSwap @ i1)

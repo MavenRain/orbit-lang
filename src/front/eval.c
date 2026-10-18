@@ -884,14 +884,37 @@ static const Value *reduce_fold_list(Machine *m, const Value *const *a) {
   return acc;
 }
 
-/* CASES holds NCASES cases, then the result type RES at CASES[NCASES]. */
+/* The number of constructors of the block of F (S6), or of F. */
+static uint32_t block_ctors(const Machine *m, const FamilyInfo *f) {
+  const FamilyInfo *last = &m->families[f->block_first + f->block_count - 1u];
+  return f->block_count > 1u ? last->first_ctor + last->ctor_count - m->families[f->block_first].first_ctor : f->ctor_count;
+}
+
+/* The result type of a fold at FAMILY: CASES[NCASES], or for a block of n
+   sorts (S6) the target of FAMILY in the n targets before it. */
+static const Value *fold_res(const Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases) {
+  const FamilyInfo *f = &m->families[family];
+  return f->block_count > 1u ? cases[ncases - f->block_count + (family - f->block_first)] : cases[ncases];
+}
+
+/* The sort of the recursive field FIELD of a constructor of FAMILY: the
+   head of its type, a sort of the block (S6). */
+static uint32_t field_sort(const FieldInfo *field, uint32_t family) {
+  const Core *t = field->path ? field->type->b : field->type;
+  return t != NULL && t->kind == CORE_OP && t->op == OP_FAMILY ? t->inst : family;
+}
+
+/* CASES holds NCASES cases, then the result type RES at CASES[NCASES]. A
+   block fold (S6) has the targets of its sorts at the end of the cases,
+   and RES is the target of FAMILY. */
 static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x) {
   const Value **args = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *args);
   uint32_t i;
   if (args == NULL)
     return oom(m);
-  for (i = 0; i <= ncases; i++)
+  for (i = 0; i < ncases; i++)
     args[i] = cases[i];
+  args[ncases] = fold_res(m, family, cases, ncases);
   args[ncases + 1u] = x;
   return val_op(m, VAL_STUCK, OP_FOLD_FAMILY, family, 0, args, ncases + 2u);
 }
@@ -912,6 +935,7 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   const CtorInfo *ctor;
   const Value *acc;
   const Value *field;
+  uint32_t base;
   uint32_t i;
   if (x == NULL)
     return NULL;
@@ -929,16 +953,18 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
     return internal(m, "a fold of a value that is not in the family");
   fam = &m->families[family];
   ctor = &m->ctors[x->inst];
-  if (x->inst < fam->first_ctor || x->inst - fam->first_ctor >= ncases || x->argc != fam->param_count + ctor->field_count + ctor->interval_count)
+  /* The constructor slots of a block are contiguous (S6). */
+  base = m->families[fam->block_first].first_ctor;
+  if (ctor->family != family || x->inst < base || x->inst - base >= ncases || x->argc != fam->param_count + ctor->field_count + ctor->interval_count)
     return internal(m, "a fold of a constructor of another family");
   if (ctor->interval_count > 2u)
     return internal(m, "a fold of a constructor with more than 2 interval fields");
   if (!enter(m))
     return NULL;
-  acc = cases[x->inst - fam->first_ctor];
+  acc = cases[x->inst - base];
   for (i = 0; i < ctor->field_count && acc != NULL; i++) {
     field = x->args[fam->param_count + i];
-    acc = apply_value(m, acc, ctor->fields[i].recursive ? fold_family(m, family, cases, ncases, field) : ctor->fields[i].path ? fold_path_field(m, family, cases, ncases, x, i) : field);
+    acc = apply_value(m, acc, ctor->fields[i].recursive ? fold_family(m, field_sort(&ctor->fields[i], family), cases, ncases, field) : ctor->fields[i].path ? fold_path_field(m, family, cases, ncases, x, i) : field);
   }
   if (ctor->interval_count == 1u && acc != NULL)
     acc = fold_path(m, family, cases, ncases, x, acc);
@@ -1419,7 +1445,7 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
   if (op == OP_FAMILY && f != NULL)
     return f->param_count + f->index_count;
   if (op == OP_FOLD_FAMILY && f != NULL)
-    return f->ctor_count + 2u;
+    return block_ctors(m, f) + (f->block_count > 1u ? f->block_count : 0u) + 2u;
   if (op == OP_ELIM)
     return inst + 2u;
   return UINT32_MAX;
@@ -2085,7 +2111,7 @@ static const Value *hcomp_formal(Machine *m, const Value *ty, const Value *phi, 
 static const Value *fold_path_field(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x, uint32_t field) {
   const FieldInfo *f = &m->ctors[x->inst].fields[field];
   uint32_t p = m->families[family].param_count;
-  return kan_closure4(m, VAL_PLAM, CLOS_FOLD_PATH, family, 4u, x->args[p + field], x->args[p + f->ends[0]], x->args[p + f->ends[1]], stuck_fold(m, family, cases, ncases, x));
+  return kan_closure4(m, VAL_PLAM, CLOS_FOLD_PATH, field_sort(f, family), 4u, x->args[p + field], x->args[p + f->ends[0]], x->args[p + f->ends[1]], stuck_fold(m, family, cases, ncases, x));
 }
 
 /* fold (hcomp F phi u u0) = hcomp RES phi (fun i => [ k -> fold (u i) ])
@@ -2095,7 +2121,7 @@ static const Value *fold_hcomp(Machine *m, uint32_t family, const Value *const *
   const Value *pack = stuck_fold(m, family, cases, ncases, x);
   const Value *sys = pack == NULL ? NULL : sys_map(m, x->args[2], CLOS_SYS_FOLD, family, 1, pack, NULL, NULL);
   const Value *base = sys == NULL ? NULL : fold_family(m, family, cases, ncases, x->args[3]);
-  return base == NULL ? NULL : hcomp(m, cases[ncases], x->args[1], sys, base);
+  return base == NULL ? NULL : hcomp(m, fold_res(m, family, cases, ncases), x->args[1], sys, base);
 }
 
 /* The index of the branch of SYS under the first true (i1) key, or
@@ -3675,16 +3701,25 @@ static void print_value(Printer *p, const Value *v, int atom) {
   }
   p->depth++;
   while (is_chain(v) && !val_is(v, OP_KMAP_OF) && !p->full) {
+    uint32_t count = v->argc - 1u;
     if (atom) {
       put(p, "(");
       open++;
     }
     put(p, op_name(p->m, v->op, v->inst, v->field));
-    /* A fold over a family does not print its result type RES (the
-       argument before the scrutinee): the source form has no RES. */
-    for (i = 0; i + 1u < v->argc; i++) {
-      if (v->op == OP_FOLD_FAMILY && i + 2u == v->argc)
-        continue;
+    /* A family fold omits RES. A block fold prints its targets first. */
+    if (v->op == OP_FOLD_FAMILY) {
+      const FamilyInfo *f = &p->m->families[v->inst];
+      count--;
+      if (f->block_count > 1u) {
+        count -= f->block_count;
+        for (i = 0; i < f->block_count; i++) {
+          put(p, " ");
+          print_value(p, v->args[count + i], 1);
+        }
+      }
+    }
+    for (i = 0; i < count; i++) {
       put(p, " ");
       print_value(p, v->args[i], 1);
     }
