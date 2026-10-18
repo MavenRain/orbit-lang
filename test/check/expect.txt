@@ -157,3 +157,5 @@ outcome-set-type.lang REFUSE_SIG
 menu-type.lang REFUSE_SIG
 dao-redefine.lang REFUSE_SIG
 dao-no-set.lang NAME_UNKNOWN
+constitution-noninvariant.lang PATH_END
+gov-unit-wrong.lang PATH_END

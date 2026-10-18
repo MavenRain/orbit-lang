@@ -90,3 +90,4 @@ dao tallied => inr unit
 dao flippedTally => inr unit
 dao nextRule => inl unit
 dao amended => inr unit
+dao historyOne => inr unit
