@@ -592,6 +592,184 @@ binders. State declarations retain their unindexed form.
 - M3b: "Yes, in S6". One mutant that removes both refusals of the S5 M3
   row, as S4 N1b did.
 
+### Builder call (S7, 2026-10-18)
+
+Source: new work in this lineage (O2 (a)). Survey:
+~/Documents/orbit-lang-work/S7-survey.md (kernel at 8b11846). Facts: elim
+takes Sum and Unit only, with one refusal site (check.c:872). PathP is in
+the kernel (rule_pathp check.c:663, check_plam check.c:2463, transp along
+a PathP eval.c:2241). A fold has a constant target from the hint
+(check.c:1149, check.c:1233), and case_fields drops the index
+(check.c:1001). Quot is a domain family (domain.lang:46-49).
+orbit_after_act (front.c:22-45) splices kernel/orbit.lang after `act`.
+check_sig skips ORIGIN_DOMAIN declarations (check.c:3400), and kernel_sig
+refuses a program Orbit or orbitProj (check.c:3415). domain.lang has
+trans, isProp, isSet, Equiv and isoToEquiv, and no funext lemma (a path
+lambda gives it, as uaArrow does). The parser has no surface for a DAO, a
+menu or a constitution.
+
+O21 and `Orbit ≃ Bag n`. The equivalence holds when Group acts on an
+n-member Member by member permutations: then an orbit is the bag of the n
+choices. It does not hold for the neutrality group (the Z2 flip of
+examples/orbit.lang). The index n is a Size. Scope (Q4): n = 2,
+`szS (szS sz0)`, in a new guest example `examples/bagorbit.lang` with
+Member and Group both `Sum Unit Unit` (identity and member swap), and
+`orbitBag : Equiv Orbit (Bag Choice (szS (szS sz0)))` by isoToEquiv.
+
+What the S6 fold gives (constant targets only, no dependent fold):
+
+- f : Orbit -> Bag Choice 2 is a Quot fold into Bag Choice 2: the quot
+  case lists the two choices, the quotEq case is elim on the group element
+  (refl or swap), and the quotSquash case is bagSquash at index 2. This is
+  the form of `agree` (examples/orbit.lang:91).
+- g : Bag Choice 2 -> Orbit is a Bag fold into the constant target
+  `Sum Unit (Sum Choice Orbit)` (size 0, size 1, size 2; one fixed orbit
+  for a larger size), then a projection to Orbit. The swap case is elim on
+  the folded tail, and the bagSquash case is isSet of the target (isSetSum,
+  isSetUnit, isSetChoice, quotSquash).
+- The two homotopies are dependent, so no S6 fold gives them.
+  `(x : Orbit) -> Path Orbit (g (f x)) x` is induction on Quot into a
+  family of propositions. `(k : Size) -> (y : Bag Choice k) -> Path (Bag
+  Choice k) (rebuild k (fold y)) y` is induction on Bag with a motive over
+  the index and the value (rebuild by induction on Size). Its swap case is
+  a square in a set, and its bagSquash case is a cube in a set.
+
+So O21 needs a dependent eliminator over Bag, with a motive over the
+index, and over Quot. This is USER question Q1. Law 2 uniqueness needs
+the same eliminator on Quot. Default (a): elim takes a domain family with
+path constructors (survey A). The motive is `(idx) -> F params idx ->
+Type k`. A point case takes the fields and one induction binder for each
+recursive field, and gives `P idx (c params fields)`. A path case gives
+`PathP (fun i => P idx (c .. i)) img0 img1` (path_case_type with the
+motive line). A squash case is the square of square_type over P. Eval:
+elim on a constructor applies the case to the fields and to the elims of
+the recursive fields; on a path constructor at r it gives the case at r
+(as fold_path); on a squash at r and s it gives the case at r and s (as
+fold_square). On a formal hcomp or a neutral value, elim stays neutral
+(O22). Block sorts (Charter, Ratified) stay outside elim in S7
+(TYPE_MISMATCH at check.c:872), because no law needs them.
+
+DAO prelude. `kernel/dao.lang` (ORIGIN_DOMAIN) is spliced after the last
+of `act` and `outcomeSet` (Q2), by the orbit_after_act mechanism. The
+program gives `menu` (Q3) after the prelude, because the menu type names
+Constitution. The prelude adds no name that section 3 does not give:
+
+```text
+def Config : Type 0 := Member -> Choice
+def Constitution : Type 0 := Sigma (F : Config -> Outcome) ((g : Group) -> (c : Config) -> Path Outcome (F (act g c)) (F c))
+def Aggregation : Type 0 := Orbit -> Outcome
+def Tally : Type 0 := Orbit
+def aggregate : Constitution -> Aggregation := a Quot fold of witness F: the quotEq case is trans of (sym (cong (witness F) (payload r))) and (payload F (witness r) b), the quotSquash case is outcomeSet (the form of agree)
+def gov : Aggregation -> Constitution := fun L => pack (fun c => L (orbitProj c)) (fun g c => cong L (quotEq (act g c) c (pack g refl)))
+def amend : Aggregation -> Aggregation := fun L => aggregate (gov L)
+```
+
+Laws, as guest theorems in a new guest example `examples/dao.lang`:
+
+| Law | Guest theorem |
+|---|---|
+| 1 anonymity | `anon F g c : Path Outcome (aggregate F (orbitProj (act g c))) (aggregate F (orbitProj c))` by cong of `aggregate F` on the quotEq path; the strong form is `payload F` |
+| 2 unit | `unit F : Path (Config -> Outcome) (fun c => aggregate F (orbitProj c)) (witness F)` is refl (the fold rule and function eta) |
+| 2 descent | aggregate |
+| 2 uniqueness | `desc F L h : Path Aggregation L (aggregate F)` for `h : Path (Config -> Outcome) (fun c => L (orbitProj c)) (witness F)`: a path lambda over elim on Orbit into `fun x => Path Outcome (L x) (aggregate F x)` (O21) |
+| 3 self-constitution | `selfCon F : Sigma (L : Aggregation) (Path Constitution (gov L) F)` is `pack (aggregate F) p`; the first fields convert, and p is a path lambda over isPropInv, a guest lemma from outcomeSet (no PathP, no connection) |
+| 4 amendment | `amendLaw F : Path Aggregation (amend (aggregate F)) (aggregate (gov (aggregate F)))` is refl; `amendTwice L : Path Aggregation (amend (amend L)) (amend L)` is cong of aggregate on the isPropInv path from `gov (amend L)` to `gov L`; a Charter block fold into Aggregation (the adopt case is amend of the base) has the adoptTwice case `sym (amendTwice L)`, which is law 4 in the type |
+
+The menu (Q3, default): the program gives `def menu : Outcome ->
+Constitution`. The outcome selects the next constitution (section 7,
+`amend()`). Each entry carries its invariance proof at compile time.
+Member permutation invariance of an entry (O5 (a), the run time tally) is
+O26, in S9.
+
+Gate rows. PLAN S7 rows, guest mode:
+
+- `constitution-noninvariant`: `pack F (fun g c => refl)` at Constitution
+  for a rule that is not invariant (the choice of the first member, under
+  the member swap). The refl end site (check.c:741-752) refuses it; the
+  row pins the code.
+- `gov-unit-wrong`: `refl` at `Path (Config -> Outcome) (fun c =>
+  aggregate F (orbitProj c)) G` for a G that is not `witness F`. The same
+  refl site refuses it.
+- New rows: `outcome-set-type` and `menu-type` (REFUSE_SIG at slot_ok),
+  `dao-redefine` (a program `def aggregate` after the slots, REFUSE_SIG at
+  kernel_sig), `dao-no-set` (a program without outcomeSet has no
+  aggregate, NAME_UNKNOWN), `elim-family-count`, `elim-path-case` (a path
+  case at a constant line), `elim-motive-index` (a motive without the
+  index binder), `elim-block` (all TYPE_MISMATCH), and `elim-motive-prop`
+  (Prop in the motive telescope, NAME_UNKNOWN, Prop-like rule R11).
+- Eval rows: elim on bagCons, on swap at i0, i1 and a neutral point, on
+  quot, on quotEq at a neutral point, and on a formal hcomp (neutral, O22).
+
+The two PLAN rows meet an older site, so they have no S7 mutant (as S6
+`bag-no-squash`).
+
+Meets. S4 elim on Sum and Unit does not change. O22 holds: elim on an
+hcomp stays neutral. O25 does not change: the guest proofs do not
+transport along an index line. S5 Glue: no change. Lowering: no change; a
+neutral elim or a prelude value of a non-word type at a word position is
+REFUSE_LOWER (lower.c:645), and Config is ghost. Guest or kit: all S7 rows
+and examples are guest (no literal, no kit name). The motive telescope is
+the only binder form; no universe is added.
+
+Slices. B1 kernel O21: the family branch of rule_elim and reduce_elim,
+the elim rows and the eval rows. B2 prelude: kernel/dao.lang, the front.c
+splice, the SIGNATURE rows of outcomeSet and menu, the kernel_sig names,
+the prelude rows. B3 guest: examples/dao.lang (laws 1 to 4, the menu, the
+Charter history fold), examples/bagorbit.lang (`Orbit ≃ Bag 2`), the PLAN
+S7 rows. B4 mutants, one at a time, and the records (FORMERS, SPEC,
+STATUS "## S7", VALIDATION, PLAN S7 row):
+
+| Mutant | Edit | Expected killer |
+|---|---|---|
+| EC | rule_elim family case count `0 *` | `elim-family-count`: ok |
+| EP | path case at the constant line | `examples/dao.lang` desc, `examples/bagorbit.lang`: refused |
+| ES | squash case at the constant line | `examples/bagorbit.lang`: refused |
+| EV | reduce_elim on a path constructor stays stuck | the swap and quotEq eval rows |
+| PJ | no dao.lang splice | `examples/dao.lang`: NAME_UNKNOWN |
+| PS | kernel_sig admits a prelude name | `dao-redefine`: ok |
+| OS | slot_ok admits any outcomeSet | `outcome-set-type`: ok |
+| MN | slot_ok admits any menu | `menu-type`: ok |
+| HIW | S6 open item: check.c:2865 `if (0 * (bs[i].body == NULL))` | fronttool `hiit-wrong-index`: TYPE_MISMATCH (survey H prediction, a code kill as BO; the run confirms or records it) |
+
+### USER ruling (S7, 2026-10-18)
+
+- Q1 O21: "Full elim on families". S7 builds default (a) of the builder
+  call: elim on a domain family with path constructors, a motive over the
+  indices and the value, PathP path cases and square squash cases. Block
+  sorts stay outside elim.
+- Q2: "Proof slot outcomeSet". The program gives `def outcomeSet : isSet
+  Outcome` after Outcome. SIGNATURE gets a slot row, and slot_ok checks
+  the type (REFUSE_SIG).
+- Q3: "Slot menu". The program gives `def menu : Outcome -> Constitution`
+  after the prelude. slot_ok checks the type (REFUSE_SIG). Member
+  permutation invariance of an entry is O26 (S9).
+- Q4: "General n". This replaces the n = 2 scope of the builder call. The
+  theorem is `bagOrbit : (n : Size) -> Equiv (OrbitN n) (Bag Choice n)`,
+  with the guest quotient `OrbitN n := Quot (Pos n -> Choice) (swapR n)`.
+  domain.lang adds the family `Pos : Size -> Type 0` (a constructor at
+  `szS n` for the first position and one that lifts `Pos n` to `Pos (szS
+  n)`; no constructor at sz0). Pos is a former instance, as Size (O24), so
+  O3 (a) holds, and Fin stays VIS_INTERNAL (O23).
+- Q5 Group at general n: "Adjacent swap words". domain.lang adds a family
+  of words of adjacent swaps over Size, and act applies a word. The orbits
+  are the S_n orbits. The full permutation form `Equiv (Pos n) (Pos n)` is
+  O27.
+
+Consequences for B3. f : OrbitN n -> Bag Choice n is a Quot fold: the
+quot case lists the choices in position order, the quotEq case is
+induction on the word (one bag swap for each letter, under bagCons), and
+the quotSquash case is bagSquash. g : Bag Choice n -> OrbitN n is elim on
+Bag with the motive `fun k y => OrbitN k`: the bagCons case puts a choice
+in front by a Quot fold, the swap case is a path in OrbitN at the index
+`szS (szS k)` by elim on Quot into a family of propositions and the swap
+at the first position, and the bagSquash case comes from isSet (OrbitN k).
+The two homotopies are elim on Quot and elim on Bag (a motive over the
+index and the value). A DAO program with Member `Pos n0`, Group the words
+at n0 and act the word action has its spliced Orbit equal to OrbitN n0 by
+conversion (an example row). B3 adds Pos and the word family to
+domain.lang before the examples. They are domain families at older sites,
+so they add no mutant.
+
 ## 9. Open items
 
 USER ruling (S1, 2026-10-16): every default below is RULED; where an item
@@ -655,7 +833,9 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
   uniqueness ("Orbit induction into a set", section 3) needs it, so S7
   needs it at the latest. S4 refuses elim on S1, Trunc1, Trunc0, Quot
   and Orbit. S6 folds are non-dependent and do not give O21 (USER ruling
-  S6: O21 and `Orbit ≃ Bag n` in S7).
+  S6: O21 and `Orbit ≃ Bag n` in S7). USER ruling S7: S7 builds elim
+  on domain families with path constructors (PLAN section 8, Q1); block
+  sorts stay outside elim.
 - O22 elim on a neutral scrutinee stays neutral in S4 (no comp in the
   motive). A Sum or Unit scrutinee is never a formal hcomp: `blocked`
   (src/front/eval.c) makes elim on an `hcomp_stuck` value neutral before
@@ -668,9 +848,20 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
 - O23 Fin is internal (builder call S5, ruled by O3 (a)): Fin, finAdd and
   finNeg have VIS_INTERNAL, because `Fin n` takes a Nat and its elements
   are Nat literals. A guest form of a finite type on the span (for S_q
-  on Choice, O5) is a later slice.
+  on Choice, O5) is a later slice. USER ruling S7 (Q4, general n): the
+  domain family `Pos : Size -> Type 0` is the guest finite type of the
+  members. Fin stays VIS_INTERNAL.
 - O24 S6 index family: Size (sz0, szS) in domain.lang is the index of Bag
   (USER ruling S6). It is a former instance, not a base type, so O3 (a)
   holds.
 - O25 transp at an indexed family along an index line that is not
   constant stays neutral in S6, as O22. S7 or later rules a reduction.
+- O26 Member permutation invariance of a menu entry (O5 (a)): the run
+  time tally forgets members, so each entry must also be invariant under
+  member permutation. S9 checks it at the histogram lowering, with
+  `Orbit ≃ Bag n` when Group is the member permutation group (USER ruling
+  S7, Q3).
+- O27 Group at general n: S7 uses words of adjacent swaps (USER ruling S7,
+  Q5). The full permutation form `Equiv (Pos n) (Pos n)` needs each
+  permutation split into swaps (decidable equality on Pos n): a later
+  slice.
