@@ -1,0 +1,219 @@
+-- The bag orbit theorem (slice S7 B3, PLAN Q4 and Q5), guest mode: at each size n the orbits of the
+-- configurations Pos n -> Choice under the word action are the bags of n choices.
+def Choice : Type 0 := Sum Unit Unit
+
+-- consP n a t puts the choice a at the first position and t after it, by elim on Pos. sizePred gives the
+-- index of the tail.
+def sizePred : Size -> Size := fun (s : Size) => elim (fun (t : Size) => Size) sz0 (fun (k : Size) (ih : Size) => k) s
+def consP : (n : Size) -> Choice -> (Pos n -> Choice) -> Pos (szS n) -> Choice :=
+  fun (n : Size) (a : Choice) (t : Pos n -> Choice) (p : Pos (szS n)) =>
+    (elim (fun (k : Size) (q : Pos k) => Choice -> (Pos (sizePred k) -> Choice) -> Choice)
+      (fun (m : Size) => fun (b : Choice) (u : Pos m -> Choice) => b)
+      (fun (m : Size) (q : Pos m) (ih : Choice -> (Pos (sizePred m) -> Choice) -> Choice) => fun (b : Choice) (u : Pos m -> Choice) => u q) p) a t
+
+-- rebuild k e is e after one step of elim on the size, and rebuildPath is the path to e (funext of
+-- rebuildEta). It gives the empty configuration at sz0 and the eta of consP at szS m.
+def rebuild : (k : Size) -> (Pos k -> Choice) -> Pos k -> Choice :=
+  fun (k : Size) => elim (fun (t : Size) => (Pos t -> Choice) -> Pos t -> Choice)
+    (fun (e : Pos sz0 -> Choice) => fun (q : Pos sz0) => inl unit)
+    (fun (m : Size) (ih : (Pos m -> Choice) -> Pos m -> Choice) => fun (e : Pos (szS m) -> Choice) => consP m (e (posFirst m)) (fun (p : Pos m) => e (posNext m p))) k
+def rebuildEta : (k : Size) -> (q : Pos k) -> (e : Pos k -> Choice) -> Path Choice (rebuild k e q) (e q) :=
+  fun (k : Size) (q : Pos k) => elim (fun (t : Size) (p : Pos t) => (e : Pos t -> Choice) -> Path Choice (rebuild t e p) (e p))
+    (fun (m : Size) => fun (e : Pos (szS m) -> Choice) => refl)
+    (fun (m : Size) (p : Pos m) (ih : (e : Pos m -> Choice) -> Path Choice (rebuild m e p) (e p)) => fun (e : Pos (szS m) -> Choice) => refl) q
+def rebuildPath : (k : Size) -> (e : Pos k -> Choice) -> Path (Pos k -> Choice) (rebuild k e) e :=
+  fun (k : Size) (e : Pos k -> Choice) => fun (i : I) => fun (q : Pos k) => rebuildEta k q e @ i
+
+-- The word action, by elim on Word. swapFront swaps the first two positions.
+def swapFront : (m : Size) -> (Pos (szS (szS m)) -> Choice) -> Pos (szS (szS m)) -> Choice :=
+  fun (m : Size) (c : Pos (szS (szS m)) -> Choice) =>
+    consP (szS m) (c (posNext (szS m) (posFirst m))) (consP m (c (posFirst (szS m))) (fun (p : Pos m) => c (posNext (szS m) (posNext m p))))
+def actW : (n : Size) -> Word n -> (Pos n -> Choice) -> Pos n -> Choice :=
+  fun (n : Size) (w : Word n) => elim (fun (k : Size) (v : Word k) => (Pos k -> Choice) -> Pos k -> Choice)
+    (fun (k : Size) => fun (d : Pos k -> Choice) => d)
+    (fun (m : Size) (v : Word (szS (szS m))) (ih : (Pos (szS (szS m)) -> Choice) -> Pos (szS (szS m)) -> Choice) =>
+      fun (d : Pos (szS (szS m)) -> Choice) => swapFront m (ih d))
+    (fun (m : Size) (u : Word m) (ihu : (Pos m -> Choice) -> Pos m -> Choice) (v : Word (szS m)) (ihv : (Pos (szS m) -> Choice) -> Pos (szS m) -> Choice) =>
+      fun (d : Pos (szS m) -> Choice) => ihv (consP m (d (posFirst m)) (ihu (fun (p : Pos m) => d (posNext m p))))) w
+def liftFront : (m : Size) -> Word m -> (Pos (szS m) -> Choice) -> Pos (szS m) -> Choice :=
+  fun (m : Size) (u : Word m) (d : Pos (szS m) -> Choice) => consP m (d (posFirst m)) (actW m u (fun (p : Pos m) => d (posNext m p)))
+
+-- The orbits at size n, with the relation of the kernel Orbit. Both quotients are sets by their squash.
+def swapR : (n : Size) -> (Pos n -> Choice) -> (Pos n -> Choice) -> Type 0 :=
+  fun (n : Size) (c : Pos n -> Choice) (d : Pos n -> Choice) => Sigma (w : Word n) (Path (Pos n -> Choice) (actW n w d) c)
+def OrbitN : Size -> Type 0 := fun (n : Size) => Quot (Pos n -> Choice) (swapR n)
+def isSetOrbitN : (k : Size) -> isSet (OrbitN k) :=
+  fun (k : Size) (x : OrbitN k) (y : OrbitN k) (p : Path (OrbitN k) x y) (q : Path (OrbitN k) x y) =>
+    fun (i : I) => fun (j : I) => quotSquash (Pos k -> Choice) (swapR k) x y p q i j
+def isSetBag : (k : Size) -> isSet (Bag Choice k) :=
+  fun (k : Size) (x : Bag Choice k) (y : Bag Choice k) (p : Path (Bag Choice k) x y) (q : Path (Bag Choice k) x y) =>
+    fun (i : I) => fun (j : I) => bagSquash Choice k x y p q i j
+
+-- listB lists a configuration in position order. A word moves the list by one bag swap for each letter.
+def listB : (k : Size) -> (Pos k -> Choice) -> Bag Choice k :=
+  fun (k : Size) => elim (fun (t : Size) => (Pos t -> Choice) -> Bag Choice t)
+    (fun (e : Pos sz0 -> Choice) => bagNil Choice)
+    (fun (m : Size) (ih : (Pos m -> Choice) -> Bag Choice m) => fun (e : Pos (szS m) -> Choice) => bagCons Choice m (e (posFirst m)) (ih (fun (p : Pos m) => e (posNext m p)))) k
+def swapList : (m : Size) -> (c : Pos (szS (szS m)) -> Choice) -> Path (Bag Choice (szS (szS m))) (listB (szS (szS m)) (swapFront m c)) (listB (szS (szS m)) c) :=
+  fun (m : Size) (c : Pos (szS (szS m)) -> Choice) => fun (i : I) =>
+    swap Choice m (c (posNext (szS m) (posFirst m))) (c (posFirst (szS m))) (listB m (fun (p : Pos m) => c (posNext (szS m) (posNext m p)))) i
+def listAct : (n : Size) -> (w : Word n) -> (d : Pos n -> Choice) -> Path (Bag Choice n) (listB n (actW n w d)) (listB n d) :=
+  fun (n : Size) (w : Word n) => elim (fun (k : Size) (v : Word k) => (d : Pos k -> Choice) -> Path (Bag Choice k) (listB k (actW k v d)) (listB k d))
+    (fun (k : Size) => fun (d : Pos k -> Choice) => refl)
+    (fun (m : Size) (v : Word (szS (szS m))) (ih : (d : Pos (szS (szS m)) -> Choice) -> Path (Bag Choice (szS (szS m))) (listB (szS (szS m)) (actW (szS (szS m)) v d)) (listB (szS (szS m)) d)) =>
+      fun (d : Pos (szS (szS m)) -> Choice) =>
+        trans (Bag Choice (szS (szS m))) (listB (szS (szS m)) (swapFront m (actW (szS (szS m)) v d))) (listB (szS (szS m)) (actW (szS (szS m)) v d)) (listB (szS (szS m)) d)
+          (swapList m (actW (szS (szS m)) v d)) (ih d))
+    (fun (m : Size) (u : Word m) (ihu : (d : Pos m -> Choice) -> Path (Bag Choice m) (listB m (actW m u d)) (listB m d))
+      (v : Word (szS m)) (ihv : (d : Pos (szS m) -> Choice) -> Path (Bag Choice (szS m)) (listB (szS m) (actW (szS m) v d)) (listB (szS m) d)) =>
+      fun (d : Pos (szS m) -> Choice) =>
+        trans (Bag Choice (szS m)) (listB (szS m) (actW (szS m) v (liftFront m u d))) (listB (szS m) (liftFront m u d)) (listB (szS m) d)
+          (ihv (liftFront m u d)) (fun (i : I) => bagCons Choice m (d (posFirst m)) (ihu (fun (p : Pos m) => d (posNext m p)) @ i))) w
+
+-- toBag is a Quot fold: the quotEq case is the path of r, then listAct on the word.
+def toBag : (k : Size) -> OrbitN k -> Bag Choice k :=
+  fun (k : Size) (z : OrbitN k) => fold (listB k)
+    (fun (c : Pos k -> Choice) (d : Pos k -> Choice) (r : swapR k c d) =>
+      trans (Bag Choice k) (listB k c) (listB k (actW k (witness r) d)) (listB k d) (sym (cong (listB k) (payload r))) (listAct k (witness r) d))
+    (isSetBag k) z
+-- consO puts a choice in front of an orbit. The quotEq case lifts the word of r to the tail.
+def consO : (m : Size) -> Choice -> OrbitN m -> OrbitN (szS m) :=
+  fun (m : Size) (a : Choice) (z : OrbitN m) => fold (fun (c : Pos m -> Choice) => quot (Pos (szS m) -> Choice) (swapR (szS m)) (consP m a c))
+    (fun (c : Pos m -> Choice) (d : Pos m -> Choice) (r : swapR m c d) =>
+      fun (i : I) => quotEq (Pos (szS m) -> Choice) (swapR (szS m)) (consP m a c) (consP m a d)
+        (pack (wordLift m (witness r) (wordNil (szS m))) (fun (j : I) => consP m a (payload r @ j))) i)
+    (isSetOrbitN (szS m)) z
+
+-- A family of propositions over a path or a square has each PathP (copied from dao.lang).
+def propOver : (X : Type 0) -> (P : X -> Type 0) -> ((x : X) -> isProp (P x)) -> (a : X) -> (b : X) -> (q : Path X a b) -> (u : P a) -> (v : P b) -> PathP (fun (i : I) => P (q @ i)) u v :=
+  fun (X : Type 0) (P : X -> Type 0) (hP : (x : X) -> isProp (P x)) (a : X) (b : X) (q : Path X a b) (u : P a) (v : P b) =>
+    fun (i : I) => hcomp (P (q @ i)) (~i \/ i) (fun (k : I) => [
+      ~i -> hP (q @ i) (transp (fun (m : I) => P (q @ (i /\ m))) i0 u) u @ k,
+      i -> hP (q @ i) (transp (fun (m : I) => P (q @ (i /\ m))) i0 u) v @ k ]) (transp (fun (m : I) => P (q @ (i /\ m))) i0 u)
+def propSquare : (X : Type 0) -> (P : X -> Type 0) -> ((x : X) -> isProp (P x)) -> (x : X) -> (y : X) -> (p : Path X x y) -> (q : Path X x y) -> (s : Path (Path X x y) p q) ->
+  (ihx : P x) -> (ihy : P y) -> (ihp : PathP (fun (j : I) => P (p @ j)) ihx ihy) -> (ihq : PathP (fun (j : I) => P (q @ j)) ihx ihy) ->
+  PathP (fun (i : I) => PathP (fun (j : I) => P ((s @ i) @ j)) ihx ihy) ihp ihq :=
+  fun (X : Type 0) (P : X -> Type 0) (hP : (x : X) -> isProp (P x)) (x : X) (y : X) (p : Path X x y) (q : Path X x y) (s : Path (Path X x y) p q)
+    (ihx : P x) (ihy : P y) (ihp : PathP (fun (j : I) => P (p @ j)) ihx ihy) (ihq : PathP (fun (j : I) => P (q @ j)) ihx ihy) =>
+    fun (i : I) => fun (j : I) => hcomp (P ((s @ i) @ j)) (~i \/ i \/ ~j \/ j) (fun (k : I) => [
+      ~i -> hP ((s @ i) @ j) (transp (fun (m : I) => P ((s @ (i /\ m)) @ (j /\ m))) i0 ihx) (ihp @ j) @ k,
+      i -> hP ((s @ i) @ j) (transp (fun (m : I) => P ((s @ (i /\ m)) @ (j /\ m))) i0 ihx) (ihq @ j) @ k,
+      ~j -> hP ((s @ i) @ j) (transp (fun (m : I) => P ((s @ (i /\ m)) @ (j /\ m))) i0 ihx) ihx @ k,
+      j -> hP ((s @ i) @ j) (transp (fun (m : I) => P ((s @ (i /\ m)) @ (j /\ m))) i0 ihx) ihy @ k ])
+      (transp (fun (m : I) => P ((s @ (i /\ m)) @ (j /\ m))) i0 ihx)
+
+-- Two maps into a set agree on a quotient when they agree at quot (the orbitExt shape of dao.lang), and two
+-- maps of bags agree when they agree at bagNil and the bagCons case follows. The set proofs and the maps
+-- are variables, so the motive does not unfold them at the squash case.
+def quotExt : (A : Type 0) -> (R : A -> A -> Type 0) -> (T : Type 0) -> isSet T -> (L : Quot A R -> T) -> (M : Quot A R -> T) ->
+  ((a : A) -> Path T (L (quot A R a)) (M (quot A R a))) -> (x : Quot A R) -> Path T (L x) (M x) :=
+  fun (A : Type 0) (R : A -> A -> Type 0) (T : Type 0) (sT : isSet T) (L : Quot A R -> T) (M : Quot A R -> T) (h : (a : A) -> Path T (L (quot A R a)) (M (quot A R a))) (x : Quot A R) =>
+    elim (fun (z : Quot A R) => Path T (L z) (M z))
+      (fun (a : A) => h a)
+      (fun (a : A) (b : A) (r : R a b) => fun (i : I) =>
+        propOver (Quot A R) (fun (z : Quot A R) => Path T (L z) (M z)) (fun (z : Quot A R) => sT (L z) (M z))
+          (quot A R a) (quot A R b) (fun (k : I) => quotEq A R a b r k) (h a) (h b) @ i)
+      (fun (w : Quot A R) (ihw : Path T (L w) (M w)) (y : Quot A R) (ihy : Path T (L y) (M y))
+        (p : Path (Quot A R) w y) (ihp : PathP (fun (j : I) => Path T (L (p @ j)) (M (p @ j))) ihw ihy)
+        (q : Path (Quot A R) w y) (ihq : PathP (fun (j : I) => Path T (L (q @ j)) (M (q @ j))) ihw ihy) =>
+        fun (i : I) => fun (j : I) => (propSquare (Quot A R) (fun (z : Quot A R) => Path T (L z) (M z)) (fun (z : Quot A R) => sT (L z) (M z))
+          w y p q (fun (m : I) => fun (n : I) => quotSquash A R w y p q m n) ihw ihy ihp ihq @ i) @ j) x
+def bagExt : (A : Type 0) -> (sB : (k : Size) -> isSet (Bag A k)) -> (L : (k : Size) -> Bag A k -> Bag A k) -> (M : (k : Size) -> Bag A k -> Bag A k) ->
+  Path (Bag A sz0) (L sz0 (bagNil A)) (M sz0 (bagNil A)) ->
+  ((m : Size) -> (a : A) -> (t : Bag A m) -> Path (Bag A m) (L m t) (M m t) -> Path (Bag A (szS m)) (L (szS m) (bagCons A m a t)) (M (szS m) (bagCons A m a t))) ->
+  (k : Size) -> (y : Bag A k) -> Path (Bag A k) (L k y) (M k y) :=
+  fun (A : Type 0) (sB : (k : Size) -> isSet (Bag A k)) (L : (k : Size) -> Bag A k -> Bag A k) (M : (k : Size) -> Bag A k -> Bag A k)
+    (hNil : Path (Bag A sz0) (L sz0 (bagNil A)) (M sz0 (bagNil A)))
+    (hCons : (m : Size) -> (a : A) -> (t : Bag A m) -> Path (Bag A m) (L m t) (M m t) -> Path (Bag A (szS m)) (L (szS m) (bagCons A m a t)) (M (szS m) (bagCons A m a t)))
+    (k : Size) (y : Bag A k) =>
+    elim (fun (n : Size) (z : Bag A n) => Path (Bag A n) (L n z) (M n z))
+      hNil
+      (fun (m : Size) (a : A) (t : Bag A m) (ih : Path (Bag A m) (L m t) (M m t)) => hCons m a t ih)
+      (fun (m : Size) (a : A) (b : A) (t : Bag A m) (ih : Path (Bag A m) (L m t) (M m t)) => fun (i : I) =>
+        propOver (Bag A (szS (szS m))) (fun (z : Bag A (szS (szS m))) => Path (Bag A (szS (szS m))) (L (szS (szS m)) z) (M (szS (szS m)) z))
+          (fun (z : Bag A (szS (szS m))) => sB (szS (szS m)) (L (szS (szS m)) z) (M (szS (szS m)) z))
+          (bagCons A (szS m) a (bagCons A m b t)) (bagCons A (szS m) b (bagCons A m a t)) (fun (k : I) => swap A m a b t k)
+          (hCons (szS m) a (bagCons A m b t) (hCons m b t ih)) (hCons (szS m) b (bagCons A m a t) (hCons m a t ih)) @ i)
+      (fun (n : Size) (w : Bag A n) (ihw : Path (Bag A n) (L n w) (M n w)) (v : Bag A n) (ihv : Path (Bag A n) (L n v) (M n v))
+        (p : Path (Bag A n) w v) (ihp : PathP (fun (j : I) => Path (Bag A n) (L n (p @ j)) (M n (p @ j))) ihw ihv)
+        (q : Path (Bag A n) w v) (ihq : PathP (fun (j : I) => Path (Bag A n) (L n (q @ j)) (M n (q @ j))) ihw ihv) =>
+        fun (i : I) => fun (j : I) => (propSquare (Bag A n) (fun (z : Bag A n) => Path (Bag A n) (L n z) (M n z)) (fun (z : Bag A n) => sB n (L n z) (M n z))
+          w v p q (fun (m : I) => fun (o : I) => bagSquash A n w v p q m o) ihw ihv ihp ihq @ i) @ j) y
+
+-- fromBagW sw is elim on Bag. The swap case is sw, and the bagSquash case is isSetOrbitN. swapO is a swap
+-- case: a path in OrbitN by quotExt and the word that swaps the first two positions. fromBag is fromBagW swapO.
+-- The kernel compares two closures by eta, so each comparison of two fromBag values unfolds swapO and does
+-- not fit in the arena. A variable sw keeps these comparisons small.
+def SwapCase : Type 0 := (m : Size) -> (a : Choice) -> (b : Choice) -> (x : OrbitN m) ->
+  Path (OrbitN (szS (szS m))) (consO (szS m) a (consO m b x)) (consO (szS m) b (consO m a x))
+def swapO : SwapCase :=
+  fun (m : Size) (a : Choice) (b : Choice) (x : OrbitN m) =>
+    quotExt (Pos m -> Choice) (swapR m) (OrbitN (szS (szS m))) (isSetOrbitN (szS (szS m)))
+      (fun (z : OrbitN m) => consO (szS m) a (consO m b z)) (fun (z : OrbitN m) => consO (szS m) b (consO m a z))
+      (fun (c : Pos m -> Choice) => fun (i : I) => quotEq (Pos (szS (szS m)) -> Choice) (swapR (szS (szS m)))
+        (consP (szS m) a (consP m b c)) (consP (szS m) b (consP m a c)) (pack (wordSwap m (wordNil (szS (szS m)))) refl) i) x
+def fromBagW : SwapCase -> (k : Size) -> Bag Choice k -> OrbitN k :=
+  fun (sw : SwapCase) (k : Size) (y : Bag Choice k) => elim (fun (n : Size) (z : Bag Choice n) => OrbitN n)
+    (quot (Pos sz0 -> Choice) (swapR sz0) (fun (q : Pos sz0) => inl unit))
+    (fun (m : Size) (a : Choice) (t : Bag Choice m) (ih : OrbitN m) => consO m a ih)
+    (fun (m : Size) (a : Choice) (b : Choice) (t : Bag Choice m) (ih : OrbitN m) => fun (i : I) => sw m a b ih @ i)
+    (fun (n : Size) (w : Bag Choice n) (ihw : OrbitN n) (v : Bag Choice n) (ihv : OrbitN n)
+      (p : Path (Bag Choice n) w v) (ihp : Path (OrbitN n) ihw ihv) (q : Path (Bag Choice n) w v) (ihq : Path (OrbitN n) ihw ihv) =>
+      fun (i : I) => fun (j : I) => (isSetOrbitN n ihw ihv ihp ihq @ i) @ j) y
+def fromBag : (k : Size) -> Bag Choice k -> OrbitN k := fromBagW swapO
+
+-- The two homotopies hold for each map G with the bagNil and bagCons rules of fromBag. G is a variable,
+-- so a motive does not unfold fromBag (the elim of fromBag at a stuck bag is too large for the arena).
+def NilRule : ((k : Size) -> Bag Choice k -> OrbitN k) -> Type 0 :=
+  fun (G : (k : Size) -> Bag Choice k -> OrbitN k) => Path (OrbitN sz0) (G sz0 (bagNil Choice)) (quot (Pos sz0 -> Choice) (swapR sz0) (fun (q : Pos sz0) => inl unit))
+def ConsRule : ((k : Size) -> Bag Choice k -> OrbitN k) -> Type 0 :=
+  fun (G : (k : Size) -> Bag Choice k -> OrbitN k) => (m : Size) -> (a : Choice) -> (t : Bag Choice m) -> Path (OrbitN (szS m)) (G (szS m) (bagCons Choice m a t)) (consO m a (G m t))
+
+-- G after toBag is the identity: at quot by elim on the size (the nil rule and rebuildPath at sz0, the
+-- cons rule, consO of the hypothesis and rebuildPath at szS m), then by quotExt.
+def fromToQuot : (G : (k : Size) -> Bag Choice k -> OrbitN k) -> NilRule G -> ConsRule G -> (k : Size) -> (c : Pos k -> Choice) -> Path (OrbitN k) (G k (listB k c)) (quot (Pos k -> Choice) (swapR k) c) :=
+  fun (G : (k : Size) -> Bag Choice k -> OrbitN k) (hN : NilRule G) (hC : ConsRule G) (k : Size) =>
+    elim (fun (t : Size) => (c : Pos t -> Choice) -> Path (OrbitN t) (G t (listB t c)) (quot (Pos t -> Choice) (swapR t) c))
+    (fun (c : Pos sz0 -> Choice) => trans (OrbitN sz0) (G sz0 (listB sz0 c)) (quot (Pos sz0 -> Choice) (swapR sz0) (rebuild sz0 c)) (quot (Pos sz0 -> Choice) (swapR sz0) c)
+      hN (fun (i : I) => quot (Pos sz0 -> Choice) (swapR sz0) (rebuildPath sz0 c @ i)))
+    (fun (m : Size) (ih : (c : Pos m -> Choice) -> Path (OrbitN m) (G m (listB m c)) (quot (Pos m -> Choice) (swapR m) c)) => fun (c : Pos (szS m) -> Choice) =>
+      trans (OrbitN (szS m)) (G (szS m) (listB (szS m) c)) (consO m (c (posFirst m)) (G m (listB m (fun (p : Pos m) => c (posNext m p))))) (quot (Pos (szS m) -> Choice) (swapR (szS m)) c)
+        (hC m (c (posFirst m)) (listB m (fun (p : Pos m) => c (posNext m p))))
+        (trans (OrbitN (szS m)) (consO m (c (posFirst m)) (G m (listB m (fun (p : Pos m) => c (posNext m p))))) (quot (Pos (szS m) -> Choice) (swapR (szS m)) (rebuild (szS m) c)) (quot (Pos (szS m) -> Choice) (swapR (szS m)) c)
+          (fun (i : I) => consO m (c (posFirst m)) (ih (fun (p : Pos m) => c (posNext m p)) @ i))
+          (fun (i : I) => quot (Pos (szS m) -> Choice) (swapR (szS m)) (rebuildPath (szS m) c @ i)))) k
+def fromTo : (G : (k : Size) -> Bag Choice k -> OrbitN k) -> NilRule G -> ConsRule G -> (k : Size) -> (x : OrbitN k) -> Path (OrbitN k) (G k (toBag k x)) x :=
+  fun (G : (k : Size) -> Bag Choice k -> OrbitN k) (hN : NilRule G) (hC : ConsRule G) (k : Size) (x : OrbitN k) =>
+    quotExt (Pos k -> Choice) (swapR k) (OrbitN k) (isSetOrbitN k) (fun (z : OrbitN k) => G k (toBag k z)) (fun (z : OrbitN k) => z) (fromToQuot G hN hC k) x
+
+-- toBag after fromBag is the identity: toBag of consO is bagCons (refl at quot), then bagExt.
+def toCons : (m : Size) -> (a : Choice) -> (x : OrbitN m) -> Path (Bag Choice (szS m)) (toBag (szS m) (consO m a x)) (bagCons Choice m a (toBag m x)) :=
+  fun (m : Size) (a : Choice) (x : OrbitN m) =>
+    quotExt (Pos m -> Choice) (swapR m) (Bag Choice (szS m)) (isSetBag (szS m))
+      (fun (z : OrbitN m) => toBag (szS m) (consO m a z)) (fun (z : OrbitN m) => bagCons Choice m a (toBag m z)) (fun (c : Pos m -> Choice) => refl) x
+def toFrom : (G : (k : Size) -> Bag Choice k -> OrbitN k) -> NilRule G -> ConsRule G -> (k : Size) -> (y : Bag Choice k) -> Path (Bag Choice k) (toBag k (G k y)) y :=
+  fun (G : (k : Size) -> Bag Choice k -> OrbitN k) (hN : NilRule G) (hC : ConsRule G) (k : Size) (y : Bag Choice k) =>
+    bagExt Choice isSetBag (fun (n : Size) (z : Bag Choice n) => toBag n (G n z)) (fun (n : Size) (z : Bag Choice n) => z)
+      (fun (i : I) => toBag sz0 (hN @ i))
+      (fun (m : Size) (a : Choice) (t : Bag Choice m) (ih : Path (Bag Choice m) (toBag m (G m t)) t) =>
+        trans (Bag Choice (szS m)) (toBag (szS m) (G (szS m) (bagCons Choice m a t))) (toBag (szS m) (consO m a (G m t))) (bagCons Choice m a t)
+          (fun (i : I) => toBag (szS m) (hC m a t @ i))
+          (trans (Bag Choice (szS m)) (toBag (szS m) (consO m a (G m t))) (bagCons Choice m a (toBag m (G m t))) (bagCons Choice m a t)
+            (toCons m a (G m t)) (fun (i : I) => bagCons Choice m a (ih @ i)))) k y
+
+-- fromBagW sw has the two rules by the elim rule. bagOrbitW holds at each swap case sw. The theorem: the
+-- orbits at size k are the bags of k choices, with fromBag as the inverse. Its type does not name sw.
+def fromBagNil : (sw : SwapCase) -> NilRule (fromBagW sw) := fun (sw : SwapCase) => refl
+def fromBagCons : (sw : SwapCase) -> ConsRule (fromBagW sw) := fun (sw : SwapCase) (m : Size) (a : Choice) (t : Bag Choice m) => refl
+def bagOrbitW : SwapCase -> (k : Size) -> Equiv (OrbitN k) (Bag Choice k) :=
+  fun (sw : SwapCase) (k : Size) => isoToEquiv (OrbitN k) (Bag Choice k) (toBag k) (fromBagW sw k)
+    (toFrom (fromBagW sw) (fromBagNil sw) (fromBagCons sw) k) (fromTo (fromBagW sw) (fromBagNil sw) (fromBagCons sw) k)
+def bagOrbit : (k : Size) -> Equiv (OrbitN k) (Bag Choice k) := bagOrbitW swapO
+
+-- The example row: a DAO program with Member Pos n0 and Group Word n0 at three positions. The kernel gives
+-- Orbit after act, and the spliced Orbit is OrbitN n0 by conversion, so bagOrbit n0 gives its bags.
+def n0 : Size := szS (szS (szS sz0))
+def Member : Type 0 := Pos n0
+def Group : Type 0 := Word n0
+def act : Group -> (Member -> Choice) -> Member -> Choice := actW n0
+def orbitRow : Path (Type 0) Orbit (OrbitN n0) := refl

@@ -764,9 +764,14 @@ in front by a Quot fold, the swap case is a path in OrbitN at the index
 `szS (szS k)` by elim on Quot into a family of propositions and the swap
 at the first position, and the bagSquash case comes from isSet (OrbitN k).
 The two homotopies are elim on Quot and elim on Bag (a motive over the
-index and the value). A DAO program with Member `Pos n0`, Group the words
-at n0 and act the word action has its spliced Orbit equal to OrbitN n0 by
-conversion (an example row). B3 adds Pos and the word family to
+index and the value). S7 s9 build: the homotopies take g as a variable G
+with its bagNil and bagCons rules, and `fromBagW sw` takes the swap case
+as a variable sw, with `bagOrbit := bagOrbitW swapO`. The kernel compares
+two closures by eta, so a comparison of two g values unfolds the swap path
+and does not fit in the arena. A DAO program with Member `Pos n0`, Group
+the words at n0 and act the word action has its spliced Orbit equal to
+OrbitN n0 by conversion (an example row at the end of bagorbit.lang).
+B3 adds Pos and the word family to
 domain.lang before the examples. They are domain families at older sites,
 so they add no mutant.
 

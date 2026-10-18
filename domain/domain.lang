@@ -61,6 +61,18 @@ family Bag (A : Type 0) : Size -> Type 0 := bagNil : Bag A sz0
     [ ~i -> bagCons A (szS swapSize) swapFirst (bagCons A swapSize swapSecond swapTail), i -> bagCons A (szS swapSize) swapSecond (bagCons A swapSize swapFirst swapTail) ]
   | bagSquash (squashSize : Size) (bagFrom : Bag A squashSize) (bagTo : Bag A squashSize) (bagLeft : Path (Bag A squashSize) bagFrom bagTo) (bagRight : Path (Bag A squashSize) bagFrom bagTo) (i : I) (j : I) : Bag A squashSize
     [ ~i -> bagLeft @ j, i -> bagRight @ j, ~j -> bagFrom, j -> bagTo ]
+-- The positions of a bag (S7 B3, Q4): Pos n has n values, the first
+-- position at each szS and a lift of each position of the tail. No
+-- constructor gives Pos sz0. A domain family, so Fin stays internal (O23).
+family Pos : Size -> Type 0 := posFirst (firstSize : Size) : Pos (szS firstSize)
+  | posNext (nextSize : Size) (nextPos : Pos nextSize) : Pos (szS nextSize)
+-- The words of adjacent swaps (S7 B3, Q5): wordSwap applies the rest,
+-- then swaps the first two positions, and wordLift applies the inner
+-- word to the tail, then the rest. The orbits of a word action are the
+-- orbits of the symmetric group.
+family Word : Size -> Type 0 := wordNil (nilSize : Size) : Word nilSize
+  | wordSwap (wordAt : Size) (wordRest : Word (szS (szS wordAt))) : Word (szS (szS wordAt))
+  | wordLift (liftSize : Size) (liftInner : Word liftSize) (liftRest : Word (szS liftSize)) : Word (szS liftSize)
 -- The charter and its ratifications (S6, O20): an inductive-inductive
 -- block. Ratified R c is a rule ratified at the charter c, adopt adds a
 -- ratified rule to a charter, and adoptTwice is law 4 in the type: a
