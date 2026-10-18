@@ -78,3 +78,11 @@ hiit bagSwapCount => trunc0 Size (szS (szS sz0))
 qiit adoptedZero => trunc0 Size sz0
 qiit adoptedTwo => trunc0 Size (szS sz0)
 qiit adoptedLaw => trunc0 Size (szS sz0)
+elim bagTwoCountE => trunc0 Size (szS (szS sz0))
+elim replicateTwo => bagCons Size (szS sz0) sz0 (bagCons Size sz0 sz0 (bagNil Size))
+elim swapAt0 => bagCons Size (szS sz0) (szS sz0) (bagCons Size sz0 (szS (szS sz0)) (bagNil Size))
+elim swapAt1 => bagCons Size (szS sz0) (szS (szS sz0)) (bagCons Size sz0 (szS sz0) (bagNil Size))
+elim bagSwapE => fun i => swap Size sz0 (szS sz0) (szS (szS sz0)) (bagNil Size) i
+elim quotThree => trunc0 Nat 2
+elim quotEqAt => fun i => trunc0 Nat 2
+elim hcompE => fun j => elim (fun m => fun c => Bag Size m) (bagNil Size) (fun k => fun h => fun t => fun ih => bagCons Size k (szS h) ih) (fun k => fun h => fun g => fun t => fun ih => fun i => swap Size k (szS h) (szS g) ih i) (fun k => fun x => fun ihx => fun y => fun ihy => fun p => fun ihp => fun q => fun ihq => fun i => fun x1 => bagSquash Size k ihx ihy ihp ihq i x1) (hcomp (Bag Size (szS (szS sz0))) (j \/ ~j) (fun i => [ ~j -> bagCons Size (szS sz0) sz0 (bagCons Size sz0 (szS sz0) (bagNil Size)), j -> swap Size sz0 sz0 (szS sz0) (bagNil Size) i ]) (bagCons Size (szS sz0) sz0 (bagCons Size sz0 (szS sz0) (bagNil Size))))

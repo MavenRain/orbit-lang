@@ -102,6 +102,37 @@ int main(void) {
               "elim (fun (t : Sum Unit Unit) => Unit) (fun a => a) (fun b => b) u", "TYPE_MISMATCH");
   ok &= guest("def bad : Unit -> Unit := fun (u : Unit) => "
               "elim (fun (v : Unit) => Unit) unit (inl u)", "TYPE_INFER");
+  /* Family eliminators can await their scrutinee. The arity comes from
+     the final motive domain, including for named and indexed motives. */
+  ok &= domain("family N := zero | succ (pred : N)\n"
+               "def id : N -> N := elim (fun (n : N) => N) zero (fun n ih => succ ih)", NULL);
+  ok &= domain("family N := zero | succ (pred : N)\n"
+               "def P : N -> Type 0 := fun n => N\n"
+               "def id : N -> N := elim P zero (fun n ih => succ ih)", NULL);
+  ok &= normal_roundtrip_in("family N := zero | succ (pred : N)", "N -> N",
+                            "elim (fun n => N) zero (fun n ih => succ ih)");
+  ok &= domain("family N := zero | succ (pred : N)\n"
+               "family V : N -> Type 0 := nilV : V zero | consV (len : N) (tailV : V len) : V (succ len)\n"
+               "def id : (n : N) -> V n -> N := fun n => "
+               "elim (fun (k : N) (v : V k) => N) zero (fun k t ih => succ ih)", NULL);
+  ok &= domain("family N := zero | succ (pred : N)\n"
+               "family V : N -> Type 0 := nilV : V zero | consV (len : N) (tailV : V len) : V (succ len) | altV (altLen : N) : V altLen\n"
+               "def id : (n : N) -> V n -> N := fun n => "
+               "elim (fun (k : N) (v : V k) => N) zero (fun k t ih => succ ih) (fun k => k)", NULL);
+  /* A saturated eliminator with a functional result still consumes the
+     scrutinee before the result arguments. */
+  ok &= domain("family N := zero | succ (pred : N)\n"
+               "def id : N -> N -> N := fun n => elim (fun (k : N) => N -> N) (fun x => x) (fun k ih x => succ (ih x)) n\n"
+               "def reduction : Path N (id (succ zero) zero) (succ zero) := refl", NULL);
+  /* Bare indexed motives accept and check annotations on later binders. */
+  ok &= domain("family N := zero | succ (pred : N)\n"
+               "family V : N -> Type 0 := nilV : V zero | consV (len : N) (tailV : V len) : V (succ len)\n"
+               "def id : (n : N) -> V n -> N := fun n v => "
+               "elim (fun k => fun (t : V k) => N) zero (fun k t ih => succ ih) v", NULL);
+  ok &= domain("family N := zero | succ (pred : N)\n"
+               "family V : N -> Type 0 := nilV : V zero | consV (len : N) (tailV : V len) : V (succ len)\n"
+               "def bad : (n : N) -> V n -> N := fun n v => "
+               "elim (fun k => fun (t : N) => N) zero (fun k t ih => succ ih) v", "TYPE_MISMATCH");
   ok &= domain("family F := makeF [ i1 -> missing ]", "DOMAIN_FAMILY");
   ok &= domain("family F := makeF [ ]", "DOMAIN_FAMILY");
   /* A path constructor's fields are not record projections: projection

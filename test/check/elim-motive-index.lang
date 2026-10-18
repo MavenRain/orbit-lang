@@ -1,0 +1,2 @@
+-- elim on Bag needs a motive over its index, then the bag (S7 B1). This motive takes only the bag at a fixed index n, so it is refused.
+def bad : (n : Size) -> Bag Size n -> Size := fun (n : Size) (b : Bag Size n) => elim (fun (c : Bag Size n) => Size) sz0 sz0 sz0 sz0 b

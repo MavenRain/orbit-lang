@@ -731,10 +731,15 @@ static const Value *reduce_either(Machine *m, const Value *const *a, uint32_t n)
 }
 
 /* elim P c1 .. cn x with n = INST + 2 (USER ruling S4). On a neutral or a
-   formal hcomp at Sum or Unit, elim stays neutral (O22). */
-static const Value *reduce_elim(Machine *m, uint32_t inst, const Value *const *a, uint32_t n) {
+   formal hcomp at Sum or Unit, elim stays neutral (O22). FIELD is 0 at Sum
+   and Unit, and the family + 1 at a domain family (S7 B1). */
+static const Value *elim_family(Machine *m, uint32_t family, const Value *const *a, uint32_t n);
+
+static const Value *reduce_elim(Machine *m, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   const Value *x = a[n - 1u];
   const Value *out;
+  if (field != 0u)
+    return elim_family(m, field - 1u, a, n);
   if (blocked(m, x, OP_ELIM, inst, 0, a, n, &out))
     return out;
   if (val_is(x, OP_HCOMP))
@@ -1026,6 +1031,112 @@ static const Value *fold_square(Machine *m, uint32_t family, const Value *const 
       return NULL;
   }
   return path_apply(m, path_apply(m, s, r1, outer[0], outer[1]), x->args[x->argc - 1u], inner[0], inner[1]);
+}
+
+/* A neutral elim over the domain family FAMILY (S7 B1, O22). A holds the
+   motive, the N - 2 cases and the scrutinee at A[N - 1]. */
+static const Value *stuck_elim(Machine *m, uint32_t family, const Value *const *a, uint32_t n) {
+  return val_op(m, VAL_STUCK, OP_ELIM, n - 2u, family + 1u, a, n);
+}
+
+/* The elim A[0 .. N - 1] at X in place of the scrutinee A[N - 1]. */
+static const Value *elim_at(Machine *m, uint32_t family, const Value *const *a, uint32_t n, const Value *x) {
+  const Value **b = arena_alloc(m->arena, (size_t)n * sizeof *b);
+  uint32_t i;
+  if (b == NULL)
+    return oom(m);
+  for (i = 0; i + 1u < n; i++)
+    b[i] = a[i];
+  b[n - 1u] = x;
+  return elim_family(m, family, b, n);
+}
+
+/* (case fields) @ r for the path constructor value x = A[N - 1] at r. P is
+   the case at the fields. The ends are the elims of x at i0 and i1, for a
+   neutral P (as fold_path). */
+static const Value *elim_path(Machine *m, uint32_t family, const Value *const *a, uint32_t n, const Value *p) {
+  const Value *x = a[n - 1u];
+  const Value *ends[2];
+  const Value **b;
+  uint32_t i;
+  int side;
+  for (side = 0; side < 2; side++) {
+    b = arena_alloc(m->arena, (size_t)x->argc * sizeof *b);
+    if (b == NULL)
+      return oom(m);
+    for (i = 0; i + 1u < x->argc; i++)
+      b[i] = x->args[i];
+    b[x->argc - 1u] = val_iend(m, side);
+    ends[side] = elim_at(m, family, a, n, val_ctor(m, x->inst, b, x->argc));
+  }
+  return path_apply(m, p, x->args[x->argc - 1u], ends[0], ends[1]);
+}
+
+/* (case fields) @ r1 @ r2 for the constructor value x = A[N - 1] with 2
+   interval fields. S is the case at the fields, a square. The faces are
+   as in fold_square, over a stuck elim of x (CLOS_FOLD_FACE). */
+static const Value *elim_square(Machine *m, uint32_t family, const Value *const *a, uint32_t n, const Value *s) {
+  const Value *x = a[n - 1u];
+  const Value *stuck = stuck_elim(m, family, a, n);
+  const Value *r1 = x->args[x->argc - 2u];
+  const Value *outer[2];
+  const Value *inner[2];
+  int side;
+  for (side = 0; side < 2; side++) {
+    outer[side] = kan_closure4(m, VAL_PLAM, CLOS_FOLD_FACE, family, 3u, x, val_iend(m, side), stuck, NULL);
+    inner[side] = elim_at(m, family, a, n, ctor_at2(m, x, r1, val_iend(m, side)));
+    if (outer[side] == NULL || inner[side] == NULL)
+      return NULL;
+  }
+  return path_apply(m, path_apply(m, s, r1, outer[0], outer[1]), x->args[x->argc - 1u], inner[0], inner[1]);
+}
+
+/* elim P c1 .. cn x over the domain family FAMILY (S7 B1, O21). The case
+   of the constructor of x takes each field, then for a recursive field its
+   elim, and for a path field the elim along it (CLOS_FOLD_PATH). A path
+   constructor and a squash go to elim_path and elim_square. A neutral x
+   and a formal hcomp stay neutral (O22). */
+static const Value *elim_family(Machine *m, uint32_t family, const Value *const *a, uint32_t n) {
+  const Value *x = a[n - 1u];
+  const FamilyInfo *fam;
+  const CtorInfo *ctor;
+  const FieldInfo *f;
+  const Value *acc;
+  const Value *out;
+  uint32_t p;
+  uint32_t i;
+  if (x == NULL)
+    return NULL;
+  if (blocked(m, x, OP_ELIM, n - 2u, family + 1u, a, n, &out))
+    return out;
+  if (val_is(x, OP_HCOMP))
+    return stuck_elim(m, family, a, n);
+  if (family >= m->family_count || !val_is(x, OP_CTOR) || x->inst >= m->ctor_count)
+    return internal(m, "an elim of a value that is not in the family");
+  fam = &m->families[family];
+  ctor = &m->ctors[x->inst];
+  p = fam->param_count;
+  if (ctor->family != family || x->inst < fam->first_ctor || x->inst - fam->first_ctor >= n - 2u || x->argc != p + ctor->field_count + ctor->interval_count)
+    return internal(m, "an elim of a constructor of another family");
+  if (ctor->interval_count > 2u)
+    return internal(m, "an elim of a constructor with more than 2 interval fields");
+  if (!enter(m))
+    return NULL;
+  acc = a[1u + (x->inst - fam->first_ctor)];
+  for (i = 0; i < ctor->field_count && acc != NULL; i++) {
+    f = &ctor->fields[i];
+    acc = apply_value(m, acc, x->args[p + i]);
+    if (f->recursive && acc != NULL)
+      acc = apply_value(m, acc, elim_at(m, family, a, n, x->args[p + i]));
+    if (f->path && acc != NULL)
+      acc = apply_value(m, acc, kan_closure4(m, VAL_PLAM, CLOS_FOLD_PATH, family, 4u, x->args[p + i], x->args[p + f->ends[0]], x->args[p + f->ends[1]], stuck_elim(m, family, a, n)));
+  }
+  if (ctor->interval_count == 1u && acc != NULL)
+    acc = elim_path(m, family, a, n, acc);
+  if (ctor->interval_count == 2u && acc != NULL)
+    acc = elim_square(m, family, a, n, acc);
+  m->depth--;
+  return acc;
 }
 
 /* 1 when the step result R ends the list. *TAIL is then the end. */
@@ -1698,10 +1809,15 @@ static const Value *kan_apply(Machine *m, const Value *k, const Value *r) {
   case CLOS_FOLD_PATH:
     if (a[3]->argc < 2u)
       return internal(m, "a folded path field without its cases");
+    /* A stuck elim (S7 B1) holds the motive, the cases and x. */
+    if (a[3]->op == OP_ELIM)
+      return elim_at(m, k->field, a[3]->args, a[3]->argc, path_apply(m, a[0], r, a[1], a[2]));
     return fold_family(m, k->field, a[3]->args, a[3]->argc - 2u, path_apply(m, a[0], r, a[1], a[2]));
   case CLOS_FOLD_FACE:
     if (a[2]->argc < 2u)
       return internal(m, "a folded face without its cases");
+    if (a[2]->op == OP_ELIM)
+      return elim_at(m, k->field, a[2]->args, a[2]->argc, ctor_at2(m, a[0], a[1], r));
     return fold_family(m, k->field, a[2]->args, a[2]->argc - 2u, ctor_at2(m, a[0], a[1], r));
   case CLOS_GLUE_BASE:
     t = glue_at(m, a[0], r);
@@ -2863,7 +2979,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_OPTION_ELIM:
     return reduce_option(m, a, n);
   case OP_ELIM:
-    return reduce_elim(m, inst, a, n);
+    return reduce_elim(m, inst, field, a, n);
   case OP_PURE:
     return reduce_pure(m, inst, a[0]);
   case OP_MAP:

@@ -1,0 +1,10 @@
+-- elim refuses a path case with the wrong ends (S7 B1): the quotEq case must be a path from the quot case at a to the quot case at b, both trunc0 Nat 0, but this path is constant at trunc0 Nat 1.
+def Rel : Nat -> Nat -> Type 0 := fun (a : Nat) (b : Nat) => Path Nat a b
+def bad : Quot Nat Rel -> Trunc0 Nat :=
+  fun (z : Quot Nat Rel) => elim (fun (w : Quot Nat Rel) => Trunc0 Nat)
+    (fun (a : Nat) => trunc0 Nat 0)
+    (fun (a : Nat) (b : Nat) (r : Rel a b) => fun (i : I) => trunc0 Nat 1)
+    (fun (x : Quot Nat Rel) (ihx : Trunc0 Nat) (y : Quot Nat Rel) (ihy : Trunc0 Nat)
+      (p : Path (Quot Nat Rel) x y) (ihp : Path (Trunc0 Nat) ihx ihy)
+      (q : Path (Quot Nat Rel) x y) (ihq : Path (Trunc0 Nat) ihx ihy) =>
+      fun (i : I) => fun (j : I) => squash0 Nat ihx ihy ihp ihq i j) z

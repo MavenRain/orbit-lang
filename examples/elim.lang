@@ -1,0 +1,72 @@
+-- The dependent eliminator on domain families (S7 B1, O21, USER ruling
+-- S7 Q1). The motive takes the indices, then the value. A case takes the
+-- fields, and after each recursive field or path field its induction
+-- hypothesis: P at the field, or a PathP over the path field. A path
+-- case gives a PathP over the constructor line.
+def parity : Nat -> Nat := fun (a : Nat) => natMod (natAdd a a) 4
+def Par : Nat -> Nat -> Type 0 := fun (a : Nat) (b : Nat) => Path Nat (parity a) (parity b)
+-- The elim of Quot Nat Par into the set Trunc0 Nat, with a constant
+-- motive. The quotSquash case gets the ends, the paths and their
+-- hypotheses, and squash0 fills the square.
+def toTruncE : Quot Nat Par -> Trunc0 Nat :=
+  fun (z : Quot Nat Par) => elim (fun (w : Quot Nat Par) => Trunc0 Nat)
+    (fun (a : Nat) => trunc0 Nat (parity a))
+    (fun (a : Nat) (b : Nat) (r : Par a b) => fun (i : I) => trunc0 Nat (r @ i))
+    (fun (x : Quot Nat Par) (ihx : Trunc0 Nat) (y : Quot Nat Par) (ihy : Trunc0 Nat)
+      (p : Path (Quot Nat Par) x y) (ihp : Path (Trunc0 Nat) ihx ihy)
+      (q : Path (Quot Nat Par) x y) (ihq : Path (Trunc0 Nat) ihx ihy) =>
+      fun (i : I) => fun (j : I) => squash0 Nat ihx ihy ihp ihq i j) z
+def quotThree : Trunc0 Nat := toTruncE (quot Nat Par 3)
+def quotEqAt : Path (Trunc0 Nat) (trunc0 Nat 2) (trunc0 Nat 2) :=
+  fun (i : I) => toTruncE (quotEq Nat Par 1 3 refl i)
+-- A dependent motive on Size: a bag of s copies of sz0 at each size s.
+def replicate : (s : Size) -> Bag Size s :=
+  fun (s : Size) => elim (fun (t : Size) => Bag Size t) (bagNil Size)
+    (fun (k : Size) (ih : Bag Size k) => bagCons Size k sz0 ih) s
+def replicateTwo : Bag Size (szS (szS sz0)) := replicate (szS (szS sz0))
+-- The identity fold on Size, and a proof by elim that it is the
+-- identity: the szS case lifts the hypothesis under szS.
+def sizeId : Size -> Size := fun (s : Size) => fold sz0 (fun (r : Size) => szS r) s
+def sizeIdPath : (s : Size) -> Path Size (sizeId s) s :=
+  fun (s : Size) => elim (fun (t : Size) => Path Size (sizeId t) t) refl
+    (fun (k : Size) (ih : Path Size (sizeId k) k) => fun (i : I) => szS (ih @ i)) s
+-- The elim of Bag into the set Trunc0 Size: the motive takes the index
+-- n, then the bag. Both ends of swap count two more, so the swap case is
+-- a constant path. The bagSquash case is squash0 at the hypotheses.
+def succ0 : Trunc0 Size -> Trunc0 Size :=
+  fun (t : Trunc0 Size) => fold (fun (s : Size) => trunc0 Size (szS s))
+    (fun (x : Trunc0 Size) (y : Trunc0 Size) (p : Path (Trunc0 Size) x y) (q : Path (Trunc0 Size) x y) => fun (i : I) => fun (j : I) => squash0 Size x y p q i j) t
+def bagCountE : (n : Size) -> Bag Size n -> Trunc0 Size :=
+  fun (n : Size) (b : Bag Size n) => elim (fun (m : Size) (c : Bag Size m) => Trunc0 Size)
+    (trunc0 Size sz0)
+    (fun (k : Size) (h : Size) (t : Bag Size k) (ih : Trunc0 Size) => succ0 ih)
+    (fun (k : Size) (h : Size) (g : Size) (t : Bag Size k) (ih : Trunc0 Size) => fun (i : I) => succ0 (succ0 ih))
+    (fun (k : Size) (x : Bag Size k) (ihx : Trunc0 Size) (y : Bag Size k) (ihy : Trunc0 Size)
+      (p : Path (Bag Size k) x y) (ihp : Path (Trunc0 Size) ihx ihy)
+      (q : Path (Bag Size k) x y) (ihq : Path (Trunc0 Size) ihx ihy) =>
+      fun (i : I) => fun (j : I) => squash0 Size ihx ihy ihp ihq i j) b
+def bagTwo : Bag Size (szS (szS sz0)) := bagCons Size (szS sz0) (szS sz0) (bagCons Size sz0 sz0 (bagNil Size))
+def bagTwoCountE : Trunc0 Size := bagCountE (szS (szS sz0)) bagTwo
+-- The elim of Bag into Bag at the same index: the motive uses the index
+-- m. The swap case is swap at the new heads, and the bagSquash case is
+-- bagSquash at the hypotheses.
+def bagMapE : (n : Size) -> Bag Size n -> Bag Size n :=
+  fun (n : Size) (b : Bag Size n) => elim (fun (m : Size) (c : Bag Size m) => Bag Size m)
+    (bagNil Size)
+    (fun (k : Size) (h : Size) (t : Bag Size k) (ih : Bag Size k) => bagCons Size k (szS h) ih)
+    (fun (k : Size) (h : Size) (g : Size) (t : Bag Size k) (ih : Bag Size k) => fun (i : I) => swap Size k (szS h) (szS g) ih i)
+    (fun (k : Size) (x : Bag Size k) (ihx : Bag Size k) (y : Bag Size k) (ihy : Bag Size k)
+      (p : Path (Bag Size k) x y) (ihp : Path (Bag Size k) ihx ihy)
+      (q : Path (Bag Size k) x y) (ihq : Path (Bag Size k) ihx ihy) =>
+      fun (i : I) => fun (j : I) => bagSquash Size k ihx ihy ihp ihq i j) b
+def bagXY : Bag Size (szS (szS sz0)) := bagCons Size (szS sz0) sz0 (bagCons Size sz0 (szS sz0) (bagNil Size))
+def bagYX : Bag Size (szS (szS sz0)) := bagCons Size (szS sz0) (szS sz0) (bagCons Size sz0 sz0 (bagNil Size))
+def bagSwapE : Path (Bag Size (szS (szS sz0))) (bagMapE (szS (szS sz0)) bagXY) (bagMapE (szS (szS sz0)) bagYX) :=
+  fun (i : I) => bagMapE (szS (szS sz0)) (swap Size sz0 sz0 (szS sz0) (bagNil Size) i)
+def swapAt0 : Bag Size (szS (szS sz0)) := bagSwapE @ i0
+def swapAt1 : Bag Size (szS (szS sz0)) := bagSwapE @ i1
+-- The elim of a formal hcomp in Bag is stuck: it waits for the hcomp to
+-- reduce at an end.
+def hcompE : Path (Bag Size (szS (szS sz0))) (bagMapE (szS (szS sz0)) bagXY) (bagMapE (szS (szS sz0)) bagYX) :=
+  fun (j : I) => bagMapE (szS (szS sz0)) (hcomp (Bag Size (szS (szS sz0))) (~j \/ j)
+    (fun (i : I) => [ ~j -> bagXY, j -> swap Size sz0 sz0 (szS sz0) (bagNil Size) i ]) bagXY)

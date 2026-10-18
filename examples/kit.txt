@@ -25,3 +25,4 @@ words.lang
 equiv.lang
 glue.lang
 univ.lang
+elim.lang
