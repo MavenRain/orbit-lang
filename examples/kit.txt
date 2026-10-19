@@ -26,3 +26,4 @@ equiv.lang
 glue.lang
 univ.lang
 elim.lang
+bn254.lang

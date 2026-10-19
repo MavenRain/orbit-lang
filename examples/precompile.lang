@@ -1,6 +1,6 @@
 -- Precompile views (slice S2, kickoff 1.5): ecAdd (address 6), ecMul (7), ecPairing (8), ecrecover (1), hash (SHA3), natDiv, natMod and addrToU256.
 -- test/precompile.sh deploys this contract and compares each view on the chain with a constant that a direct `evm run` to the precompile gave.
--- The evaluator keeps a curve op stuck (R17): `langc eval examples/precompile.lang twoG` prints the term. hash, natDiv, natMod and addrToU256 compute.
+-- The evaluator computes a closed ecAdd or ecMul (S8 B1, examples/bn254.lang): `langc eval examples/precompile.lang twoG` prints the 2 G words. An open curve op, ecPairing and ecrecover stay stuck (R17). hash, natDiv, natMod and addrToU256 compute.
 state State := makeState (sigs : List U256)
 
 def init : State := makeState nil
@@ -23,9 +23,9 @@ def mulX : (env : Env) -> (s : State) -> (ax ay k : U256) -> U256 :=
 def mulY : (env : Env) -> (s : State) -> (ax ay k : U256) -> U256 :=
   fun (env : Env) (s : State) (ax ay k : U256) => second (ecMul (pair ax ay) k)
 
--- (1, 1) is not on the curve: the precompile fails and the call reverts (R18).
-def addBad : (env : Env) -> (s : State) -> U256 :=
-  fun (env : Env) (s : State) => first (ecAdd (pair 1u 1u) (pair 1u 2u))
+-- (1, 1) is not on the curve: the precompile fails and the call reverts (R18). The y of the second point is an argument, so the curve op is open and the lowerer emits the call (S8 B1 folds a closed one to the host trap).
+def addBad : (env : Env) -> (s : State) -> (y : U256) -> U256 :=
+  fun (env : Env) (s : State) (y : U256) => first (ecAdd (pair 1u 1u) (pair 1u y))
 
 -- G2 of BN254 in the EIP-197 input order: (x_im, x_re), (y_im, y_re).
 def g2 : Prod (Prod U256 U256) (Prod U256 U256) :=
@@ -75,7 +75,7 @@ def leafStep : (env : Env) -> (s : State) -> (i : Nat) -> Nat :=
 def addrWord : (env : Env) -> (s : State) -> (a : Addr) -> U256 :=
   fun (env : Env) (s : State) (a : Addr) => addrToU256 a
 
--- Closed terms for `langc eval`: hash computes (keccak256 of 64 zero bytes), a curve op stays stuck, addrToU256 computes.
+-- Closed terms for `langc eval`: hash computes (keccak256 of 64 zero bytes), the closed ecAdd computes (S8 B1), addrToU256 computes.
 def hashZero : U256 := hash 0u 0u
 
 def twoG : Prod U256 U256 := ecAdd (pair 1u 2u) (pair 1u 2u)

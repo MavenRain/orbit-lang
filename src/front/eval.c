@@ -1,6 +1,7 @@
 /* The evaluator, the conversion test, quote and the printer (see
    front/core.h). SHARED by the tcc kits. */
 #include "front/core.h"
+#include "front/bn254.h"
 #include "keccak.h"
 
 #include <string.h>
@@ -1381,8 +1382,8 @@ static const Value *addr_to_u256(Machine *m, const Value *const *a, uint32_t n) 
   return word_value(m, a[0]->word);
 }
 
-/* The curve ops (S2, R17): a trap argument gives the trap; else the
-   application is stuck, closed arguments included. The chain test is the
+/* ecrecover and ecPairing (S2, R17): a trap argument gives the trap; else
+   the application is stuck, closed arguments included. The chain test is the
    differential gate (O5). */
 static const Value *opaque(Machine *m, Op op, const Value *const *a, uint32_t n) {
   for (uint32_t i = 0; i < n; i++) {
@@ -1390,6 +1391,36 @@ static const Value *opaque(Machine *m, Op op, const Value *const *a, uint32_t n)
       return a[i];
   }
   return val_op(m, VAL_STUCK, op, 0, 0, a, n);
+}
+
+/* 1 when V is a closed G1: a pair of two words. */
+static int closed_point(const Value *v) {
+  return val_is(v, OP_PAIR) && v->args[0]->kind == VAL_WORD && v->args[1]->kind == VAL_WORD;
+}
+
+/* ecAdd and ecMul (S8 B1, USER ruling Q1): closed arguments compute in the
+   host (front/bn254.c). A coordinate at or above p or a point not on the
+   curve traps like an overflow (R14: the host reading of the 0x06 and 0x07
+   revert, R18). An open argument keeps the application stuck (opaque), so
+   the lowerer still emits the precompile. */
+static const Value *ec_op(Machine *m, Op op, const Value *const *a, uint32_t n) {
+  G1 p;
+  G1 q;
+  U256 x;
+  U256 y;
+  if (!closed_point(a[0]) || (op == OP_EC_ADD ? !closed_point(a[1]) : a[1]->kind != VAL_WORD))
+    return opaque(m, op, a, n);
+  if (!g1_from_words(&p, a[0]->args[0]->word, a[0]->args[1]->word))
+    return overflow(m);
+  if (op == OP_EC_ADD) {
+    if (!g1_from_words(&q, a[1]->args[0]->word, a[1]->args[1]->word))
+      return overflow(m);
+    g1_add(&p, &p, &q);
+  } else {
+    g1_mul(&p, &p, a[1]->word);
+  }
+  g1_to_words(&x, &y, &p);
+  return make(m, VAL_OP, OP_PAIR, 0, 2, word_value(m, &x), word_value(m, &y), NULL);
 }
 
 /* finAdd n a b: (a + b) mod n, with no overflow. A[0] is n. */
@@ -3026,9 +3057,10 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return hash_words(m, a, n);
   case OP_ADDR_TO_U256:
     return addr_to_u256(m, a, n);
-  case OP_ECRECOVER:
   case OP_EC_ADD:
   case OP_EC_MUL:
+    return ec_op(m, op, a, n);
+  case OP_ECRECOVER:
   case OP_EC_PAIRING:
     return opaque(m, op, a, n);
   case OP_FLAG_IF:

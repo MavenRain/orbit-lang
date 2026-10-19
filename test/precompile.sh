@@ -4,9 +4,11 @@
 # word with a constant. Each constant was confirmed at build (2026-10-15, evm
 # 1.14.12) with a direct `evm run --input HEX --receiver 0x..0N` to the
 # precompile address N (1 ecrecover, 6 ecAdd, 7 ecMul, 8 ecPairing) before it
-# entered this file. `langc run` cannot give these words: the evaluator keeps a
-# curve op stuck (R17), thus this gate compares the chain result only. It needs
-# evm (go-ethereum), bc, od and build/slottool. Run it from the kit root.
+# entered this file. The evaluator computes a closed ecAdd or ecMul (S8 B1):
+# examples/bn254.lang gives k G in the host for each k of the mulX and mulY rows,
+# with the same words. ecPairing and ecrecover stay stuck (R17). This gate
+# compares the chain result only. It needs evm (go-ethereum), bc, od and
+# build/slottool. Run it from the kit root.
 set -u
 fail=0
 steps=0
@@ -54,8 +56,21 @@ else
   # ecMul (1,2) 0 is the point at infinity, (0, 0).
   call "out 0" mulX 1u 2u 0u
   call "out 0" mulY 1u 2u 0u
+  # 3G, (r minus 1) G = (1, p minus 2) and r G = (0, 0), r the order of G1 (S8 B1;
+  # confirmed 2026-10-18 with a direct `evm run` to 0x..07, evm 1.14.12).
+  threeGx=769bf9ac56bea3ff40232bcb1b6bd159315d84715b8e679f2d355961915abf0
+  threeGy=2ab799bee0489429554fdb7c8d086475319e63b40b9c5b57cdf1ff3dd9fe2261
+  pMinusTwo=30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45
+  rMinusOne=0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000u
+  rOrder=0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001u
+  call "out $threeGx" mulX 1u 2u 3u
+  call "out $threeGy" mulY 1u 2u 3u
+  call "out 1" mulX 1u 2u "$rMinusOne"
+  call "out $pMinusTwo" mulY 1u 2u "$rMinusOne"
+  call "out 0" mulX 1u 2u "$rOrder"
+  call "out 0" mulY 1u 2u "$rOrder"
   # (1, 1) is not on the curve: the precompile fails and the call reverts (R18).
-  call revert addBad
+  call revert addBad 2u
   # e(G1, G2) e(-G1, G2) = 1 (EIP-197), and the empty product is 1.
   call "out 1" pairOk
   call "out 1" pairNil
