@@ -836,8 +836,11 @@ ballot is (member index, choice, poll id) with the key of that member; a
 witness is (choice, poll id, c_1, s_1 to s_n, I). The member index of a
 closed Member value is its place in the constructor order (Sum: inl
 first; Pos: the first position is 0). Test keys are x_i = hash(tag, i)
-mod r, and the nonces come from a hash of (x, poll id, choice, i), so
-each vector is reproducible (test only, docs/VALIDATION.md). verifyZK w t
+mod r. Deterministic scalars hash (tag, x, D, poll id, choice, i, role),
+with role 0 for the private signer nonce and role 1 for public decoy
+responses. The ring digest and separate roles prevent private key recovery
+when the same vote is signed in different rings or positions. Each vector
+is reproducible (test only, docs/VALIDATION.md). verifyZK w t
 is a decidable family (O11): at a closed w it reduces to Unit when the
 host check passes, else it stays neutral. So `refl : Path U (verifyZK
 (proveZK b) t) Unit` is the completeness row of law 5 on a test ring,
@@ -912,6 +915,23 @@ the host side.
 - Q4 nullifier: "Map keyed with the poll". The state field
   `used : Map U256 Flag`, keyed by hash (hash I.x I.y) pollId, at the
   Solidity slot keccak256(key . field) (O13).
+
+### USER ruling (S8 session 3, 2026-10-18)
+
+- Q5 poll id: "Poll id 0 in host". castPrivate : Member -> Choice ->
+  Ballot_priv, as before. The guest has no poll id (O3 (a)), so the host
+  ballot has poll id 0 (the constructor stores 0, section 7). `langc
+  prove` takes the poll id as a command argument. S9 binds the poll id of
+  the contract.
+- Q6 zk-flip: "verifyZK takes the choice". verifyZK w c t, as
+  `cast(choice, ring signature, key image)` of section 7: the check reads
+  the choice from c, so a witness is (poll id, c_1, s_1 to s_n, I). The
+  completeness row is `refl : Path U (verifyZK (proveZK b) (project b)
+  t) Unit`, and the zk-flip row gives the other choice as c (PATH_END).
+  This changes the signature of verifyZK in section 6 and O11 (the B4
+  records).
+- B1 g1_mul: "Keep Jacobian". The double and add loop keeps a Jacobian
+  point (one inverse per product). One ecMul is 0.015 s under tcc.
 
 ## 9. Open items
 

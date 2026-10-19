@@ -73,8 +73,42 @@ static int normal_roundtrip(const char *type, const char *body) {
   return normal_roundtrip_in("", type, body);
 }
 
+static int zk_trap(const char *type, const char *body) {
+  char source[2048];
+  Arena arena;
+  Diag diag;
+  TokenList tokens = {0};
+  DeclList decls = {0};
+  Machine machine;
+  const Value *value = NULL;
+  snprintf(source, sizeof source,
+           "def max : U256 := 115792089237316195423570985008687907853269984665640564039457584007913129639935u\n"
+           "def bad : U256 := u256Add max 1u\n"
+           "def value : %s := %s", type, body);
+  arena_init(&arena, (size_t)1 << 24);
+  diag_init(&diag);
+  int ok = lex_source(&arena, "test-zk-trap", source, strlen(source), &tokens, &diag)
+    && parse_source(&arena, "test-zk-trap", ORIGIN_DOMAIN, &tokens, &decls, &diag)
+    && check_program(&arena, &decls, &machine, &diag, CHECK_KIT);
+  if (ok)
+    value = def_value(&machine, 2u);
+  ok = ok && value != NULL && value->kind == VAL_TRAP;
+  if (!ok)
+    fprintf(stderr, "FAIL zk nested trap: %s\n", body);
+  arena_release(&arena);
+  return ok;
+}
+
 int main(void) {
   int ok = 1;
+  ok &= zk_trap("Prod U256 U256", "zkHp (pair bad 2u)");
+  ok &= zk_trap("U256", "zkDigest (cons (pair bad 2u) nil)");
+  ok &= zk_trap("U256", "zkDigest (cons (flagIf (u256Eq bad 0u) (pair 1u 2u) (pair 1u 2u)) nil)");
+  ok &= zk_trap("U256", "zkDigest (cons (pair 1u 2u) (flagIf (u256Eq bad 0u) nil nil))");
+  ok &= zk_trap("Flag", "zkVerify (cons (pair 1u 2u) nil) 0u 1u (cons bad (cons 1u (cons 1u (cons 2u nil))))");
+  ok &= normal_roundtrip("Prod U256 U256 -> Prod U256 U256", "fun (p : Prod U256 U256) => zkHp p");
+  ok &= normal_roundtrip("List (Prod U256 U256) -> U256", "fun (ring : List (Prod U256 U256)) => zkDigest ring");
+  ok &= normal_roundtrip("List U256 -> Flag", "fun (sig : List U256) => zkVerify (cons (pair 1u 2u) nil) 0u 1u sig");
   /* The empty domain (sealed-lang S2, R21) lexes, parses and checks. */
   ok &= domain("", NULL);
   /* Elimination consumes its scrutinee before applying a functional result. */

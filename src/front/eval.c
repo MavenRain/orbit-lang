@@ -1,6 +1,7 @@
 /* The evaluator, the conversion test, quote and the printer (see
    front/core.h). SHARED by the tcc kits. */
 #include "front/core.h"
+#include "front/blsag.h"
 #include "front/bn254.h"
 #include "keccak.h"
 
@@ -30,6 +31,8 @@ static const char *const OP_NAMES[] = {
   [OP_EC_ADD] = "ecAdd", [OP_EC_MUL] = "ecMul", [OP_EC_PAIRING] = "ecPairing", [OP_ADDR_TO_U256] = "addrToU256",
   [OP_ADDR_EQ] = "addrEq", [OP_PROJ] = "?", [OP_KMAP] = "Map", [OP_KMAP_OF] = "mapOf",
   [OP_KMAP_GET] = "mapGet", [OP_KMAP_SET] = "mapSet",
+  [OP_ZK_HP] = "zkHp", [OP_ZK_KEY] = "zkKey", [OP_ZK_DIGEST] = "zkDigest",
+  [OP_ZK_SIGN] = "zkSign", [OP_ZK_VERIFY] = "zkVerify",
   [OP_INTERVAL] = "I", [OP_TRANSP] = "transp",
   [OP_SYSTEM] = "system", [OP_HCOMP] = "hcomp", [OP_FIN] = "Fin",
   [OP_FIN_ADD] = "finAdd", [OP_FIN_NEG] = "finNeg", [OP_FIN_CASE] = "finCase",
@@ -54,6 +57,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_NAT_DIV] = 2, [OP_NAT_MOD] = 2, [OP_HASH] = 2, [OP_ECRECOVER] = 4,
   [OP_EC_ADD] = 2, [OP_EC_MUL] = 2, [OP_EC_PAIRING] = 1, [OP_ADDR_TO_U256] = 1,
   [OP_PROJ] = 1, [OP_KMAP] = 2, [OP_KMAP_OF] = VARIES, [OP_KMAP_GET] = 3, [OP_KMAP_SET] = 4,
+  [OP_ZK_HP] = 1, [OP_ZK_KEY] = 1, [OP_ZK_DIGEST] = 1, [OP_ZK_SIGN] = 4, [OP_ZK_VERIFY] = 4,
   [OP_INTERVAL] = 0, [OP_TRANSP] = 3,
   [OP_SYSTEM] = VARIES, [OP_HCOMP] = 4, [OP_FIN] = 1, [OP_FIN_ADD] = 3,
   [OP_FIN_NEG] = 2, [OP_FIN_CASE] = VARIES, [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
@@ -1423,6 +1427,184 @@ static const Value *ec_op(Machine *m, Op op, const Value *const *a, uint32_t n) 
   return make(m, VAL_OP, OP_PAIR, 0, 2, word_value(m, &x), word_value(m, &y), NULL);
 }
 
+/* The zk ops (S8 B2a): bLSAG over BN254 G1 in the host (front/blsag.c).
+   Closed arguments compute; an open argument keeps the application stuck
+   (opaque). A ring that is empty or above BLSAG_RING_MAX members (O28), a
+   point off the curve or with a coordinate at or above p (the 0x07 revert,
+   R14, R18), a signer key that is zero, at or above r or outside the ring, and a key image
+   off the curve trap. */
+
+/* The trap among the arguments, or NULL. */
+static const Value *trap_arg(const Value *const *a, uint32_t n) {
+  uint32_t i;
+  for (i = 0; i < n; i++) {
+    if (a[i]->kind == VAL_TRAP)
+      return a[i];
+  }
+  return NULL;
+}
+
+/* A trap in a point itself or either coordinate, or NULL. */
+static const Value *point_trap(const Value *v) {
+  if (v->kind == VAL_TRAP)
+    return v;
+  return val_is(v, OP_PAIR) ? trap_arg(v->args, 2u) : NULL;
+}
+
+/* 1 when V is a closed word or point list (a cons chain to nil). Its
+   elements go to ITEMS (at most CAP) and *COUNT gets its length, capped at
+   CAP + 1. A trap in the spine, an element or a point coordinate goes to
+   *TRAP; this must propagate rather than becoming an open application. */
+static int closed_list(const Value *v, const Value **items, uint32_t cap, uint32_t *count, const Value **trap) {
+  uint32_t k = 0;
+  while (val_is(v, OP_CONS)) {
+    *trap = point_trap(v->args[0]);
+    if (*trap != NULL)
+      return 0;
+    if (k < cap)
+      items[k] = v->args[0];
+    if (k <= cap)
+      k++;
+    v = v->args[1];
+  }
+  *count = k;
+  if (v->kind == VAL_TRAP)
+    *trap = v;
+  return val_is(v, OP_NIL);
+}
+
+/* Reads the ring A[0] into RING and *COUNT. Else *OUT is the stuck
+   application (an open list or point) or the trap (a bad ring). */
+static int zk_ring(Machine *m, Op op, const Value *const *a, uint32_t n, G1 *ring, uint32_t *count, const Value **out) {
+  const Value *items[BLSAG_RING_MAX + 1u];
+  uint32_t i;
+  if (!closed_list(a[0], items, BLSAG_RING_MAX, count, out)) {
+    if (*out == NULL)
+      *out = opaque(m, op, a, n);
+    return 0;
+  }
+  if (*count == 0 || *count > BLSAG_RING_MAX) {
+    *out = overflow(m);
+    return 0;
+  }
+  for (i = 0; i < *count; i++) {
+    if (!closed_point(items[i])) {
+      *out = opaque(m, op, a, n);
+      return 0;
+    }
+  }
+  for (i = 0; i < *count; i++) {
+    if (!g1_from_words(&ring[i], items[i]->args[0]->word, items[i]->args[1]->word)) {
+      *out = overflow(m);
+      return 0;
+    }
+  }
+  return 1;
+}
+
+/* zkHp P: the hash to point H_p(P). */
+static const Value *zk_hp(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = point_trap(a[0]);
+  G1 p;
+  G1 h;
+  U256 x;
+  U256 y;
+  uint32_t counter = 0;
+  if (out != NULL)
+    return out;
+  if (!closed_point(a[0]))
+    return opaque(m, OP_ZK_HP, a, n);
+  if (!g1_from_words(&p, a[0]->args[0]->word, a[0]->args[1]->word) || !blsag_hash_point(&h, &counter, &p))
+    return overflow(m);
+  g1_to_words(&x, &y, &h);
+  return make(m, VAL_OP, OP_PAIR, 0, 2, word_value(m, &x), word_value(m, &y), NULL);
+}
+
+/* zkKey i: the test key hash(tag, i) mod r. */
+static const Value *zk_key(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = trap_arg(a, n);
+  U256 w;
+  if (out != NULL)
+    return out;
+  if (a[0]->kind != VAL_NAT)
+    return opaque(m, OP_ZK_KEY, a, n);
+  blsag_key(&w, a[0]->nat);
+  return word_value(m, &w);
+}
+
+/* zkDigest ring: the ring digest D. */
+static const Value *zk_digest(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = trap_arg(a, n);
+  G1 ring[BLSAG_RING_MAX];
+  U256 d;
+  uint32_t count = 0;
+  if (out != NULL)
+    return out;
+  if (!zk_ring(m, OP_ZK_DIGEST, a, n, ring, &count, &out))
+    return out;
+  blsag_digest(&d, ring, count);
+  return word_value(m, &d);
+}
+
+/* zkSign ring x pollId choice: the list c_1, s_1 to s_n, I.x, I.y. */
+static const Value *zk_sign(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = trap_arg(a, n);
+  G1 ring[BLSAG_RING_MAX];
+  U256 sig[BLSAG_RING_MAX + 3u];
+  uint32_t count = 0;
+  uint32_t i;
+  if (out != NULL)
+    return out;
+  if (a[1]->kind != VAL_WORD || a[2]->kind != VAL_WORD || a[3]->kind != VAL_WORD)
+    return opaque(m, OP_ZK_SIGN, a, n);
+  if (!zk_ring(m, OP_ZK_SIGN, a, n, ring, &count, &out))
+    return out;
+  if (!blsag_sign(sig, ring, count, a[1]->word, a[2]->word, a[3]->word))
+    return overflow(m);
+  out = constant(m, OP_NIL);
+  for (i = count + 3u; i > 0; i--)
+    out = make(m, VAL_OP, OP_CONS, 0, 2, word_value(m, &sig[i - 1u]), out, NULL);
+  return out;
+}
+
+/* zkVerify ring pollId choice sig: flagYes when the chain closes, each s_i
+   is below r and I is not (0, 0). A list of another length than n + 3 is
+   flagNo. */
+static const Value *zk_verify(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = trap_arg(a, n);
+  const Value *items[BLSAG_RING_MAX + 4u];
+  G1 ring[BLSAG_RING_MAX];
+  U256 sig[BLSAG_RING_MAX + 3u];
+  uint32_t count = 0;
+  uint32_t len = 0;
+  uint32_t i;
+  if (out != NULL)
+    return out;
+  if (a[1]->kind != VAL_WORD || a[2]->kind != VAL_WORD)
+    return opaque(m, OP_ZK_VERIFY, a, n);
+  if (!closed_list(a[3], items, BLSAG_RING_MAX + 3u, &len, &out))
+    return out != NULL ? out : opaque(m, OP_ZK_VERIFY, a, n);
+  for (i = 0; i < len && i < BLSAG_RING_MAX + 3u; i++) {
+    if (items[i]->kind != VAL_WORD)
+      return opaque(m, OP_ZK_VERIFY, a, n);
+  }
+  if (!zk_ring(m, OP_ZK_VERIFY, a, n, ring, &count, &out))
+    return out;
+  if (len != count + 3u)
+    return flag(m, 0);
+  for (i = 0; i < len; i++)
+    sig[i] = *items[i]->word;
+  switch (blsag_verify(ring, count, a[1]->word, a[2]->word, sig)) {
+  case BLSAG_ACCEPT:
+    return flag(m, 1);
+  case BLSAG_REJECT:
+    return flag(m, 0);
+  case BLSAG_TRAP:
+    return overflow(m);
+  }
+  return internal(m, "an unknown bLSAG verdict");
+}
+
 /* finAdd n a b: (a + b) mod n, with no overflow. A[0] is n. */
 static const Value *fin_add(Machine *m, const Value *const *a, uint32_t n) {
   const Value *out;
@@ -2082,6 +2264,11 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_KMAP_OF:
   case OP_KMAP_GET:
   case OP_KMAP_SET:
+  case OP_ZK_HP:
+  case OP_ZK_KEY:
+  case OP_ZK_DIGEST:
+  case OP_ZK_SIGN:
+  case OP_ZK_VERIFY:
   case OP_TRANSP:
   case OP_SYSTEM:
   case OP_HCOMP:
@@ -3063,6 +3250,16 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_ECRECOVER:
   case OP_EC_PAIRING:
     return opaque(m, op, a, n);
+  case OP_ZK_HP:
+    return zk_hp(m, a, n);
+  case OP_ZK_KEY:
+    return zk_key(m, a, n);
+  case OP_ZK_DIGEST:
+    return zk_digest(m, a, n);
+  case OP_ZK_SIGN:
+    return zk_sign(m, a, n);
+  case OP_ZK_VERIFY:
+    return zk_verify(m, a, n);
   case OP_FLAG_IF:
     return reduce_flag_if(m, a, n);
   case OP_PROJ:

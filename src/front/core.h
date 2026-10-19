@@ -84,6 +84,13 @@ typedef enum {
   OP_KMAP_OF,
   OP_KMAP_GET,
   OP_KMAP_SET,
+  /* Slice S8 B2a: bLSAG over BN254 G1 in the host (front/blsag.c). Kit only,
+     `langc eval` only: zkHp, zkKey, zkDigest, zkSign and zkVerify. */
+  OP_ZK_HP,
+  OP_ZK_KEY,
+  OP_ZK_DIGEST,
+  OP_ZK_SIGN,
+  OP_ZK_VERIFY,
   OP_INTERVAL, /* the sort I: never a type, only the type of an interval term */
   OP_TRANSP,   /* transp L phi a: L a line (a path value in U), phi a face */
   OP_SYSTEM,   /* a system: key0, branch0, key1, branch1, ...; each branch a PLAM */
