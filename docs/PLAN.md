@@ -775,6 +775,144 @@ B3 adds Pos and the word family to
 domain.lang before the examples. They are domain families at older sites,
 so they add no mutant.
 
+### Builder call (S8, 2026-10-18)
+
+Source: new work in this lineage (O2 (a)), with one port. Survey:
+~/Documents/orbit-lang-work/S8-survey.md (kernel at 049c04e). Facts: the
+host has no field arithmetic (no mulmod, inverse or modexp in src/).
+ecAdd, ecMul, ecPairing and ecrecover are VIS_INTERNAL (check.c:193-196)
+and stay stuck in the host (opaque, eval.c:3029-3033;
+test/eval/expect.txt:53). They lower to a STATICCALL to address 1, 6, 7
+or 8 (lower.c:602), and a call that returns 0 reverts (evm.c:372-373).
+The gate runs go-ethereum `evm` 1.14.12, so the repo has no C precompile
+code (test/precompile.sh:2-9) and no modexp op (ir.h:126). hash is
+keccak256 of two U256 words (check.c:192, eval.c:1358-1372). u256Le and
+u256Eq exist (check.c:181-182). A Map lowers only with a word key and a
+word value, at the slot keccak256(key . field) (lower.c:36, 634, 664).
+Entry parameters are words, at most 32 (check.h:8, lower.c:214).
+check_sig skips a name that is not of ORIGIN_PROGRAM (check.c:3728), so
+a kernel splice can give the six primitive names (check.c:3617-3630)
+with no change to SIGNATURE. `langc prove` does not exist
+(main.c:40-47). No sibling has C Fp or G1 code or a ring signature.
+glue-lang src/front/fr.c at cded21d (last changed in 4f0e083) has BN254
+Fr add, sub, mul and the Fermat inverse on 8 limbs of 32 bits
+(fr.c:8-11, 118-185), MIT OR Apache.
+
+Scheme (O10 (a)): bLSAG over BN254 G1. For the ring P_1 to P_n with
+H_i := H_p(P_i), the signer j with secret key x (P_j = x G) gives the key
+image I = x H_j, c_1 and s_1 to s_n. The verifier computes
+L_i = s_i G + c_i P_i, R_i = s_i H_i + c_i I and
+c_(i+1) = hash chain of (tag, D, poll id, choice, I, L_i, R_i), and
+accepts iff c_(n+1) = c_1. D is the ring digest: the compiler computes it
+once as the hash chain of P_1 to P_n, and the contract stores it with the
+H_i table, so a cast binds its ring (O30). ecMul takes any 256-bit
+scalar, so the chain needs no reduction mod the group order r on chain.
+The host prover computes s_j as α minus c_j x, mod r (Fr). Facts that
+bind the design:
+
+- H_p must have no known discrete log to G. H_p(P) = hash(P) G is
+  refused: then I = hash(P) P links each ballot to its member.
+- H_p must be canonical. With a y or a counter from the signer, one
+  member can make two key images (y or p minus y, a later counter). So
+  the cast takes no H_p data: the compiler computes each H_i once by try
+  and increment with the host square root (p is 3 mod 4), and the
+  contract stores the table (O14: the ring is fixed at deployment).
+- A point not on the curve reverts at 0x06 (precompile.sh:57-58) and,
+  by EIP-196 (no gate row yet), at 0x07. ecMul by 0 gives (0, 0) with no
+  revert (precompile.sh:54-56). So the verifier refuses I = (0, 0) and
+  an s_i at or above r (u256Le). It does not range check c_1: c_1 must
+  equal c_(n+1), a keccak256 word, and about 81% of such words are at or
+  above r (r / 2^256 is about 0.19), so that check refuses most valid
+  casts. A word c_1 + r gives the same chain (ecMul works mod r), so the
+  compare refuses it.
+- A cast takes the choice, c_1, s_1 to s_n and I: n + 4 words, so the
+  ring size is at most 28 (O28).
+
+Carriers (O3 (a) and O11, ruled S1). Ballot_priv and ZKWitness are core
+types with guest-visible names and internal carriers: no guest
+constructor and no guest eliminator. The guest gets values only from
+castPrivate and proveZK, and reads them only by project and verifyZK. A
+ballot is (member index, choice, poll id) with the key of that member; a
+witness is (choice, poll id, c_1, s_1 to s_n, I). The member index of a
+closed Member value is its place in the constructor order (Sum: inl
+first; Pos: the first position is 0). Test keys are x_i = hash(tag, i)
+mod r, and the nonces come from a hash of (x, poll id, choice, i), so
+each vector is reproducible (test only, docs/VALIDATION.md). verifyZK w t
+is a decidable family (O11): at a closed w it reduces to Unit when the
+host check passes, else it stays neutral. So `refl : Path U (verifyZK
+(proveZK b) t) Unit` is the completeness row of law 5 on a test ring,
+and a wrong witness gives PATH_END. In S8 the check does not read t: the
+one-use part is the run time map, and the guest one-use law is O13 (S9).
+The six names come from a kernel splice after Member, Choice and the DAO
+prelude, as orbit_after_act does (front.c:53-86).
+
+Lowering. verifyZK lowers as a kit definition (VIS_INTERNAL) over ecAdd,
+ecMul, hash, u256Le and u256Eq, unrolled for the ring size n of the
+program (n is fixed at compile time). A kit-mode example
+examples/zkcast.lang has the state (the ring, the H_i table, the poll id,
+the nullifier map, the counts) and the entry `cast`, which reverts on a
+failed check or a used key image. S9 writes the section 7 contract from
+the DAO declaration over the same definition.
+
+Gate rows. Known-answer: eval rows k G for k in 1, 2, 3, r minus 1 and r,
+equal to the go-ethereum 0x07 words (twoGx and twoGy,
+precompile.sh:48-49); H_p rows for the test ring; bLSAG vectors for
+n = 2 and n = 3; an eval row of ecMul at a point not on the curve (a
+trap). Check rows: the completeness row and `zk-flip` (the witness of a
+ballot for one choice, read for the other choice: PATH_END). EVM rows in
+test/precompile.sh (an old harness): a valid cast, then the PLAN
+mutants as revert rows (wrong ring member, reused key image, flipped
+choice, wrong poll id, point not on the curve: an I off the curve, so
+the 0x07 refusal gets a gate row), the row I = (0, 0), and the row s_1 + r: a valid cast with
+s_1 + r in place of s_1 (2r < 2^256), on a state with no used key image.
+That cast passes the chain, so only the range test refuses it. A row
+with s_1 = r fails the compare too, so it does not kill RG. The row
+I = (0, 0) also fails the compare (each R_i changes), so it has no S8
+mutant.
+
+Slices. B1 host curve: the C port (Q1), G1 affine add, double, scalar
+mul and the on-curve test, host ecAdd and ecMul compute
+(test/eval/expect.txt:53 changes to the 2G words), the known-answer
+eval rows. B2 kernel and host prover: the core types and ops, the
+splice, H_p, the test keys, castPrivate, proveZK, project and verifyZK
+in the host, the check rows, and `langc prove` (Q3). B3
+lowering: the verify definition, examples/zkcast.lang, the nullifier map
+(Q4), the EVM rows. B4 mutants, one at a time, and the records (FORMERS,
+SPEC, STATUS "## S8", VALIDATION, PLAN S8 row):
+
+| Mutant | Edit | Expected killer |
+|---|---|---|
+| FP | Fp mul without the final subtract | eval k G rows: wrong words |
+| ON | the host on-curve test returns 1 | eval row of a point not on the curve: no trap |
+| HP | the H_p counter starts at 1 | eval H_p row |
+| CH | the verifier drops the compare c_(n+1) = c_1 | EVM wrong ring member: no revert |
+| NU | `cast` skips the nullifier read | EVM reused key image: no revert |
+| CC | the choice is not in the challenge | EVM flipped choice: no revert; check row `zk-flip`: ok |
+| PI | the poll id is not in the challenge | EVM wrong poll id: no revert |
+| RG | the s range test admits any word | EVM s_1 + r: no revert |
+
+The EVM row for a point not on the curve meets an older site (the
+precompile), so it has no S8 mutant (as S6 `bag-no-squash`); ON covers
+the host side.
+
+### USER ruling (S8, 2026-10-18)
+
+- Q1 curve code: "Port fr.c, host computes". B1 ports glue-lang
+  src/front/fr.c at cded21d with the modulus as a parameter (Fp and Fr),
+  writes G1 add, double, scalar mul and the on-curve test as new C, and
+  makes host ecAdd and ecMul compute. ecPairing and ecrecover stay
+  opaque. 0x05 stays out of S8.
+- Q2 key image: "Static H_p table". The compiler computes each H_i once,
+  the contract stores the table, and I = x H_i. One member's ballots link
+  across polls (O29).
+- Q3 scope: "Prover + langc prove in S8". S8 gives the host prover and
+  verifier, the known-answer vectors, the verify lowering, the nullifier
+  map and a thin `langc prove` that writes the cast calldata (O18). The
+  section 7 contract writer stays in S9.
+- Q4 nullifier: "Map keyed with the poll". The state field
+  `used : Map U256 Flag`, keyed by hash (hash I.x I.y) pollId, at the
+  Solidity slot keccak256(key . field) (O13).
+
 ## 9. Open items
 
 USER ruling (S1, 2026-10-16): every default below is RULED; where an item
@@ -813,10 +951,13 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
 - O10 ZK scheme: (a, default) bLSAG ring signature over BN254, prover in the
   host. (b) Groth16 (Semaphore form), verifier on chain over 0x06 to 0x08,
   proofs only as fixtures from an external prover, so proveZK is not
-  evaluable in the host.
+  evaluable in the host. USER ruling S8: bLSAG with a static H_p table
+  that the compiler computes (section 8, Q2).
 - O11 verifyZK: a decidable family; "≡ 1" is a Path in U to Unit.
 - O12 Privacy equivalence: the Ballot_pub reading of section 6.
-- O13 Nullifier: the key image; the one-use law as a proposition.
+- O13 Nullifier: the key image; the one-use law as a proposition. USER
+  ruling S8 (Q4): at run time `used : Map U256 Flag`, keyed by hash (hash
+  I.x I.y) pollId. The guest one-use law is S9.
 - O14 Membership: a fixed ring at deployment; no join and no leave.
 - O15 Contract surface: (a, default) written by the compiler from the DAO
   declaration. (b) guest-written entries in the kit `state` syntax, which
@@ -827,7 +968,8 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
 - O17 Proof irrelevance: PROHIBITED (USER ruling 2026-10-16). No Prop-like
   types of any kind (section 1).
 - O18 Off-chain commands: `langc prove` writes the cast calldata; `langc
-  run` evaluates ballots and tallies in the host.
+  run` evaluates ballots and tallies in the host. USER ruling S8 (Q3):
+  `langc prove` is in S8.
 - O19 Scope of the claim: orbit-lang proves the laws on the quotient
   reading. It does not claim the category-level Lean statements beyond the
   discrete case of U/Characterization.lean:81.
@@ -870,3 +1012,18 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
   Q5). The full permutation form `Equiv (Pos n) (Pos n)` needs each
   permutation split into swaps (decidable equality on Pos n): a later
   slice.
+- O28 Ring size (builder call S8): a cast takes the choice, c_1, s_1 to
+  s_n and the key image, n + 4 words, and an entry takes at most 32
+  words (check.h:8). So a ring has at most 28 members. A larger ring
+  needs a calldata array: a later slice.
+- O29 Link across polls (USER ruling S8, Q2): the key image I = x H_i
+  does not change with the poll, so the ballots of one member in two
+  polls carry the same I. The member stays hidden in the ring, but the
+  link is an assumption in docs/VALIDATION.md. A per-poll H_p is a later
+  slice.
+- O30 Replay across deployments (review S8): the survey default (item 9)
+  put the contract address in the challenge, but the kernel has no op
+  for the address of the contract. The ring digest D binds the ring
+  only, so a cast replays on a second deployment with the same ring and
+  poll id. This is an assumption in docs/VALIDATION.md. An address op is
+  a later slice.
