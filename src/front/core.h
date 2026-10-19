@@ -359,6 +359,13 @@ typedef struct GlueRec {
    NULL result, so a caller can test once at the end. */
 const Value *val_nat(Machine *m, uint64_t n);
 const Value *val_word(Machine *m, uint64_t sort, const U256 *word);
+/* The ZK witness of the canonical ballot B (castPrivate m c) under the poll
+   id POLL (S8 B2c). OK sets CHOICE to the constructor index of c as a word,
+   SIG[0] to SIG[N + 2] to c_1, s_1 to s_n, I.x and I.y, and N to the ring
+   size. OPEN: B is not a canonical ballot, the member type is not finite,
+   or m or c has no constructor index. TRAP: the ring or the signing fails. */
+typedef enum { ZK_WITNESS_OK, ZK_WITNESS_OPEN, ZK_WITNESS_TRAP } ZkWitnessVerdict;
+ZkWitnessVerdict zk_witness(Machine *m, const Value *b, const U256 *poll, U256 *choice, U256 *sig, uint32_t *n);
 const Value *val_var(Machine *m, uint32_t level);
 /* The interval variable at LEVEL. */
 const Value *val_ivar(Machine *m, uint32_t level);

@@ -1729,35 +1729,50 @@ static const Value *zk_cast(Machine *m, const Value *const *a, uint32_t n) {
   return val_op(m, VAL_OP, OP_ZK_CAST, 0, 0, a, n);
 }
 
-/* zkProve b: the witness of a canonical ballot, the word list poll id 0,
-   c_1, s_1 to s_n, I.x, I.y (n + 4 words). The ring is the member ring, the
-   signer the member of the ballot, the choice word its constructor index.
-   A sign failure is overflow; an open b is stuck. */
-static const Value *zk_prove(Machine *m, const Value *const *a, uint32_t n) {
-  const Value *out = trap_arg(a, n);
-  const Value *b = a[0];
+/* The witness of the canonical ballot B under POLL (core.h): the ring is
+   the member ring, the signer the member of the ballot, the choice word its
+   constructor index. Shared by zkProve (poll id 0) and `langc prove`. */
+ZkWitnessVerdict zk_witness(Machine *m, const Value *b, const U256 *poll, U256 *choice, U256 *sig, uint32_t *n) {
   G1 ring[BLSAG_RING_MAX];
   U256 key;
-  U256 poll;
-  U256 choice;
-  U256 sig[BLSAG_RING_MAX + 3u];
   uint64_t card;
   uint64_t member;
   uint64_t index;
+  if (!val_is(b, OP_ZK_CAST) || !zk_card(m, b->args[0], &card) || !zk_index(m, b->args[0], b->args[2], &member) || !zk_index(m, b->args[1], b->args[3], &index))
+    return ZK_WITNESS_OPEN;
+  if (!zk_member_ring(ring, card))
+    return ZK_WITNESS_TRAP;
+  blsag_key(&key, member);
+  u256_from_u64(choice, index);
+  if (!blsag_sign(sig, ring, (uint32_t)card, &key, poll, choice))
+    return ZK_WITNESS_TRAP;
+  *n = (uint32_t)card;
+  return ZK_WITNESS_OK;
+}
+
+/* zkProve b: the witness of a canonical ballot, the word list poll id 0,
+   c_1, s_1 to s_n, I.x, I.y (n + 4 words). A sign failure is overflow; an
+   open b is stuck. */
+static const Value *zk_prove(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = trap_arg(a, n);
+  U256 poll;
+  U256 choice;
+  U256 sig[BLSAG_RING_MAX + 3u];
+  uint32_t card = 0;
   uint32_t i;
   if (out != NULL)
     return out;
-  if (!val_is(b, OP_ZK_CAST) || !zk_card(m, b->args[0], &card) || !zk_index(m, b->args[0], b->args[2], &member) || !zk_index(m, b->args[1], b->args[3], &index))
-    return opaque(m, OP_ZK_PROVE, a, n);
-  if (!zk_member_ring(ring, card))
-    return overflow(m);
-  blsag_key(&key, member);
   u256_from_u64(&poll, 0u);
-  u256_from_u64(&choice, index);
-  if (!blsag_sign(sig, ring, (uint32_t)card, &key, &poll, &choice))
+  switch (zk_witness(m, a[0], &poll, &choice, sig, &card)) {
+  case ZK_WITNESS_OPEN:
+    return opaque(m, OP_ZK_PROVE, a, n);
+  case ZK_WITNESS_TRAP:
     return overflow(m);
+  case ZK_WITNESS_OK:
+    break;
+  }
   out = constant(m, OP_NIL);
-  for (i = (uint32_t)card + 3u; i > 0; i--)
+  for (i = card + 3u; i > 0; i--)
     out = make(m, VAL_OP, OP_CONS, 0, 2, word_value(m, &sig[i - 1u]), out, NULL);
   return make(m, VAL_OP, OP_CONS, 0, 2, word_value(m, &poll), out, NULL);
 }

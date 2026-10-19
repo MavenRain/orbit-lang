@@ -18,7 +18,8 @@ typedef enum {
   CMD_RUN,
   CMD_IR,
   CMD_ABI,
-  CMD_BUILD
+  CMD_BUILD,
+  CMD_PROVE
 } Command;
 
 typedef struct {
@@ -44,6 +45,7 @@ static const struct {
   {"ir", CMD_IR},
   {"abi", CMD_ABI},
   {"build", CMD_BUILD},
+  {"prove", CMD_PROVE},
 };
 
 static int usage(FILE *err) {
@@ -53,6 +55,7 @@ static int usage(FILE *err) {
         "       langc [--kit] ir PROG\n"
         "       langc [--kit] abi PROG [--text]\n"
         "       langc [--kit] build PROG [-o OUT] [--runtime]\n"
+        "       langc [--kit] prove PROG NAME [POLL]\n"
         "--kit: the kit mode, the trusted test scope of the kit gate\n", err);
   return 2;
 }
@@ -106,6 +109,13 @@ static int parse_options(int argc, char **argv, Options *opt, Diag *diag) {
       return 1;
     case CMD_BUILD:
       return parse_build_options(argc, argv, opt, diag);
+    case CMD_PROVE:
+      if (argc < 4) return diag_fail(diag, "USAGE", NULL, "prove needs a definition name");
+      if (argc > 5) return diag_fail(diag, "USAGE", NULL, "prove takes only a poll id after the name");
+      opt->entry = argv[3];
+      opt->args = argv + 4;
+      opt->arg_count = argc - 4;
+      return 1;
   }
   return 0;
 }
@@ -133,6 +143,7 @@ static const char *command_word(Command command) {
     case CMD_IR: return "ir";
     case CMD_ABI: return "abi";
     case CMD_BUILD: return "build";
+    case CMD_PROVE: return "prove";
   }
   return "?";
 }
@@ -190,6 +201,9 @@ static int run(const Options *opt, Arena *arena, Diag *diag) {
       if (!read_source(arena, opt->script_path, &script, &script_len, diag)) return 2;
       return run_command(&machine, opt->script_path, script, script_len, stdout);
     }
+    case CMD_PROVE:
+      signal(SIGPIPE, SIG_IGN);
+      return prove_command(&machine, opt->entry, opt->arg_count == 1 ? opt->args[0] : NULL, stdout, stderr);
     case CMD_BUILD:
     case CMD_ABI:
       return output_command(&machine, opt, diag);

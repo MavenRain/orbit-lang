@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "front/blsag.h"
 #include "front/check.h"
 #include "front/lexer.h"
 #include "front/parser.h"
@@ -115,8 +116,91 @@ static int zk_kernel(const char *member_type, const char *member,
   return domain(source, want);
 }
 
+/* Check command output with the independent verifier, and reject unwritable
+   output streams for both successful signatures and signing traps. */
+static int prove_output(int trap, int broken, const char *poll) {
+  char source[256];
+  char text[512];
+  Arena arena;
+  Diag diag;
+  TokenList tokens = {0};
+  DeclList decls = {0};
+  Machine machine;
+  FILE *out = broken ? fopen("/dev/null", "r") : tmpfile();
+  FILE *err = tmpfile();
+  if (out == NULL || err == NULL) {
+    if (out != NULL) fclose(out);
+    if (err != NULL) fclose(err);
+    fputs("FAIL prove output: cannot open test streams\n", stderr);
+    return 0;
+  }
+  snprintf(source, sizeof source,
+           "def b : ZkBallot := zkCast (%s) (Sum Unit Unit) (%s) (inr unit)",
+           trap ? "Fin 29" : "Unit", trap ? "0" : "unit");
+  arena_init(&arena, (size_t)1 << 24);
+  diag_init(&diag);
+  int ok = lex_source(&arena, "test-prove", source, strlen(source), &tokens, &diag)
+    && parse_source(&arena, "test-prove", ORIGIN_DOMAIN, &tokens, &decls, &diag)
+    && check_program(&arena, &decls, &machine, &diag, CHECK_KIT);
+  if (ok) {
+    int result = prove_command(&machine, "b", poll, out, err);
+    ok = result == (broken ? 2 : 0)
+      && (broken ? diag.code != NULL && strcmp(diag.code, "IO_WRITE") == 0 : diag.code == NULL);
+  }
+  if (ok && !broken) {
+    rewind(out);
+    size_t size = fread(text, 1, sizeof text - 1u, out);
+    text[size] = '\0';
+    ok = !ferror(out) && feof(out);
+    if (trap) {
+      ok = ok && strcmp(text, "trap\n") == 0;
+      rewind(err);
+      ok = ok && fgets(text, sizeof text, err) != NULL
+        && strncmp(text, "langc: EVAL_OVERFLOW: b:", 23u) == 0;
+    } else {
+      G1 gen;
+      G1 ring;
+      U256 one;
+      U256 two;
+      U256 key;
+      U256 poll_word;
+      U256 wrong_poll;
+      U256 sig[4];
+      ok = ok && lex_source(&arena, "test-calldata", text, size, &tokens, &diag)
+        && tokens.count == 6u;
+      for (uint32_t i = 0; ok && i < 5u; i++)
+        ok = tokens.items[i].kind == TOK_WORD && tokens.items[i].nat == WORD_U256
+          && tokens.items[i].line == (int)i + 1;
+      u256_from_u64(&one, 1u);
+      u256_from_u64(&two, 2u);
+      u256_from_u64(&poll_word, poll == NULL ? 0u : 7u);
+      u256_from_u64(&wrong_poll, poll == NULL ? 7u : 0u);
+      ok = ok && u256_cmp(&tokens.items[0].word, &one) == 0
+        && g1_from_words(&gen, &one, &two);
+      if (ok) {
+        blsag_key(&key, 0u);
+        g1_mul(&ring, &gen, &key);
+        for (uint32_t i = 0; i < 4u; i++) sig[i] = tokens.items[i + 1u].word;
+        ok = blsag_verify(&ring, 1u, &poll_word, &one, sig) == BLSAG_ACCEPT
+          && blsag_verify(&ring, 1u, &wrong_poll, &one, sig) == BLSAG_REJECT;
+      }
+    }
+  }
+  if (!ok) fprintf(stderr, "FAIL prove output: trap=%d broken=%d poll=%s\n",
+                   trap, broken, poll == NULL ? "default" : poll);
+  fclose(out);
+  fclose(err);
+  arena_release(&arena);
+  return ok;
+}
+
 int main(void) {
   int ok = 1;
+  ok &= prove_output(0, 1, NULL);
+  ok &= prove_output(1, 1, NULL);
+  ok &= prove_output(0, 0, NULL);
+  ok &= prove_output(0, 0, "7u");
+  ok &= prove_output(1, 0, NULL);
   /* Projection only reads the stored choice, including under binders. */
   ok &= domain("def projected : (M : Type 0) -> (C : Type 0) -> (m : M) -> (c : C) -> "
                "Path C (zkProject C (zkCast M C m c)) c := "

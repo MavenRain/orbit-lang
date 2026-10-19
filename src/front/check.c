@@ -4,6 +4,7 @@
    hint) or its type is inferred. Two types are equal when their normal forms
    are equal (front/eval.c). The checker writes core terms (front/core.h). */
 #include "front/check.h"
+#include "front/blsag.h"
 
 #include <string.h>
 
@@ -4157,6 +4158,64 @@ int eval_command(Machine *m, const char *name, char *const *args, int arg_count,
   if (v == NULL)
     return strcmp(m->diag->code != NULL ? m->diag->code : "", "EVAL_ARGS") == 0 ? 2 : 1;
   return print_result(m, name, v, out, err);
+}
+
+int prove_command(Machine *m, const char *name, const char *poll, FILE *out, FILE *err) {
+  uint32_t d = find_def(m, name);
+  const Value *v;
+  const Value *arg;
+  const U256 *poll_word;
+  U256 zero;
+  U256 choice;
+  U256 sig[BLSAG_RING_MAX + 3u];
+  uint32_t n = 0;
+  uint32_t i;
+  char buf[96];
+  ZkWitnessVerdict verdict;
+  m->def = name;
+  if (d == NO_DEF) {
+    diag_fail(m->diag, "EVAL_ENTRY", name, "no definition has this name");
+    return 1;
+  }
+  v = def_value(m, d);
+  if (v == NULL)
+    return 1;
+  u256_from_u64(&zero, 0u);
+  poll_word = &zero;
+  if (poll != NULL) {
+    arg = entry_arg(m, poll, ARG_TYPE_U256);
+    if (arg == NULL)
+      return 2;
+    poll_word = arg->word;
+  }
+  if (!val_is(v, OP_ZK_CAST)) {
+    diag_fail(m->diag, "PROVE_BALLOT", name, "the definition is not a private ballot (castPrivate m c)");
+    return 1;
+  }
+  verdict = zk_witness(m, v, poll_word, &choice, sig, &n);
+  switch (verdict) {
+  case ZK_WITNESS_OPEN:
+    diag_fail(m->diag, "PROVE_OPEN", name, "the member or the choice of the ballot is open");
+    return 1;
+  case ZK_WITNESS_TRAP:
+    fputs("trap\n", out);
+    break;
+  case ZK_WITNESS_OK:
+    word_text(WORD_U256, &choice, buf, sizeof buf);
+    fprintf(out, "%s\n", buf);
+    for (i = 0; i < n + 3u; i++) {
+      word_text(WORD_U256, &sig[i], buf, sizeof buf);
+      fprintf(out, "%s\n", buf);
+    }
+    break;
+  }
+  if (fflush(out) != 0 || ferror(out)) {
+    diag_fail(m->diag, "IO_WRITE", name, "cannot write proof output");
+    return 2;
+  }
+  if (verdict == ZK_WITNESS_TRAP)
+    fprintf(err, "langc: EVAL_OVERFLOW: %s: an operation trapped: a Nat or U256 overflow, or a U256 division by 0\n", name);
+  return 0;
 }
 
 /* The role of a definition in a run (slice K3b, D-3), found by its type. */

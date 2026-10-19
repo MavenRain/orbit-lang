@@ -109,6 +109,44 @@ eval_refused 2 EVAL_ARGS addPrice 18446744073709551616 1
 eval_refused 2 EVAL_ARGS pick 2 4 9
 eval_refused 1 EVAL_ENTRY nope
 
+# Each line of test/prove/expect.txt is `FILE NAME [POLL] => WORDS`. `langc prove`
+# must exit 0 and print the words of WORDS, one per line (S8 B2c).
+proves=0
+while IFS= read -r line; do
+  want=${line#* => }
+  set -- ${line%% => *}
+  file=$1
+  name=$2
+  shift 2
+  status=0
+  build/langc $(kit examples/kit.txt "$file.lang") prove "examples/$file.lang" "$name" "$@" >"$tmp/out" 2>"$tmp/err" || status=$?
+  got=$(tr '\n' ' ' <"$tmp/out")
+  got=${got% }
+  proves=$((proves + 1))
+  case "$status|$got" in
+    "0|$want") ;;
+    *) echo "FAIL prove $file $name: want $want, got exit $status: $got"; fail=$((fail + 1)) ;;
+  esac
+done <test/prove/expect.txt
+echo "proves: $proves checked"
+
+# prove_refused STATUS CODE FILE NAME [POLL]: `langc prove examples/FILE.lang
+# NAME POLL` must exit STATUS and print `langc: CODE: NAME: ...` on stderr.
+prove_refused() {
+  want_status=$1
+  code=$2
+  file=$3
+  shift 3
+  status=0
+  build/langc prove "examples/$file.lang" "$@" 2>"$tmp/err" >/dev/null || status=$?
+  case "$status:$(head -n 1 "$tmp/err")" in
+    "$want_status:langc: $code: $1: "*) ;;
+    *) echo "FAIL prove $file $*: want exit $want_status and $code, got exit $status"; fail=$((fail + 1)) ;;
+  esac
+}
+prove_refused 1 PROVE_BALLOT dao w0
+prove_refused 2 EVAL_ARGS dao b0 x
+
 status=0
 build/langc 2>/dev/null || status=$?
 [ "$status" -eq 2 ] || { echo "FAIL usage: want exit 2, got $status"; fail=$((fail + 1)); }

@@ -31,6 +31,11 @@ int entry_of(Machine *m, const Value *type, Entry *out);
 /* Evaluates the definition NAME on ARGS and prints the result. Returns 0, 1
    after a diagnostic, or 2 after an EVAL_ARGS diagnostic. */
 int eval_command(Machine *m, const char *name, char *const *args, int arg_count, FILE *out, FILE *err);
+/* Prints the ZK calldata words of the private ballot NAME (castPrivate m c)
+   under the poll id POLL (NULL means 0): the choice index, then c_1, s_1 to
+   s_n, I.x and I.y, one word per line (S8 B2c). Returns 0, 1 after a
+   diagnostic, or 2 after an EVAL_ARGS or IO_WRITE diagnostic. */
+int prove_command(Machine *m, const char *name, const char *poll, FILE *out, FILE *err);
 /* Runs the call script TEXT (from PATH) on the state from `init` (slice K3b)
    and prints each call and the final state. Returns 0, 1 after a diagnostic,
    or 2 after an EVAL_ARGS diagnostic. */
