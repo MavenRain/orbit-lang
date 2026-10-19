@@ -38,6 +38,22 @@ static const char dao_source[] =
   "  (fun (g : Group) (c : Config) => fun (i : I) => L (quotEq (Member -> Choice) " ORBIT_R " (act g c) c (pack g refl) i))\n"
   "def amend : Aggregation -> Aggregation := fun (L : Aggregation) => aggregate (gov L)\n";
 
+/* The ZK surface as kernel declarations (orbit-lang S8 B2b, PLAN
+   "Carriers"): the primitive names of the design signature over the
+   internal carriers ZkBallot and ZkWitness, after Member, Choice and the
+   DAO prelude (Tally present means the prelude is in). The member and the
+   choice go to the host by constructor index, the poll id is 0, and
+   verifyZK leaves t unread in S8. */
+#define ZK_SOURCE_NAME "kernel/zk.lang"
+
+static const char zk_source[] =
+  "def Ballot_priv : Type 0 := ZkBallot\n"
+  "def ZKWitness : Type 0 := ZkWitness\n"
+  "def castPrivate : Member -> Choice -> Ballot_priv := fun (m : Member) (c : Choice) => zkCast Member Choice m c\n"
+  "def proveZK : Ballot_priv -> ZKWitness := fun (b : Ballot_priv) => zkProve b\n"
+  "def project : Ballot_priv -> Choice := fun (b : Ballot_priv) => zkProject Choice b\n"
+  "def verifyZK : ZKWitness -> Choice -> Tally -> Type 0 := fun (w : ZKWitness) (c : Choice) (t : Tally) => zkCheck Member Choice w c\n";
+
 /* The first definition named NAME in OUT from FIRST on, or OUT->count. */
 static size_t def_at(const DeclList *out, size_t first, const char *name) {
   size_t at;
@@ -77,12 +93,15 @@ static int splice_after(Arena *arena, size_t first, const char *const *after, si
 
 static const char *const ORBIT_AFTER[] = {"act"};
 static const char *const DAO_AFTER[] = {"orbitProj", "outcomeSet"};
+static const char *const ZK_AFTER[] = {"Member", "Choice", "Tally"};
 
 /* Orbit and orbitProj go directly after act. The DAO prelude goes after the
-   last of orbitProj (so after act) and outcomeSet. */
+   last of orbitProj (so after act) and outcomeSet. The ZK surface goes
+   after the last of Member, Choice and Tally (so after the DAO prelude). */
 static int orbit_after_act(Arena *arena, size_t first, DeclList *out, Diag *diag) {
   return splice_after(arena, first, ORBIT_AFTER, 1u, ORBIT_SOURCE_NAME, orbit_source, sizeof orbit_source - 1u, out, diag)
-      && splice_after(arena, first, DAO_AFTER, 2u, DAO_SOURCE_NAME, dao_source, sizeof dao_source - 1u, out, diag);
+      && splice_after(arena, first, DAO_AFTER, 2u, DAO_SOURCE_NAME, dao_source, sizeof dao_source - 1u, out, diag)
+      && splice_after(arena, first, ZK_AFTER, 3u, ZK_SOURCE_NAME, zk_source, sizeof zk_source - 1u, out, diag);
 }
 
 int front_load(Arena *arena, const char *source, const char *text, size_t len, DeclList *out, Diag *diag) {

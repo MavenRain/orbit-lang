@@ -33,6 +33,8 @@ static const char *const OP_NAMES[] = {
   [OP_KMAP_GET] = "mapGet", [OP_KMAP_SET] = "mapSet",
   [OP_ZK_HP] = "zkHp", [OP_ZK_KEY] = "zkKey", [OP_ZK_DIGEST] = "zkDigest",
   [OP_ZK_SIGN] = "zkSign", [OP_ZK_VERIFY] = "zkVerify",
+  [OP_ZK_BALLOT] = "ZkBallot", [OP_ZK_WITNESS] = "ZkWitness", [OP_ZK_CAST] = "zkCast",
+  [OP_ZK_PROVE] = "zkProve", [OP_ZK_PROJECT] = "zkProject", [OP_ZK_CHECK] = "zkCheck",
   [OP_INTERVAL] = "I", [OP_TRANSP] = "transp",
   [OP_SYSTEM] = "system", [OP_HCOMP] = "hcomp", [OP_FIN] = "Fin",
   [OP_FIN_ADD] = "finAdd", [OP_FIN_NEG] = "finNeg", [OP_FIN_CASE] = "finCase",
@@ -58,6 +60,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_EC_ADD] = 2, [OP_EC_MUL] = 2, [OP_EC_PAIRING] = 1, [OP_ADDR_TO_U256] = 1,
   [OP_PROJ] = 1, [OP_KMAP] = 2, [OP_KMAP_OF] = VARIES, [OP_KMAP_GET] = 3, [OP_KMAP_SET] = 4,
   [OP_ZK_HP] = 1, [OP_ZK_KEY] = 1, [OP_ZK_DIGEST] = 1, [OP_ZK_SIGN] = 4, [OP_ZK_VERIFY] = 4,
+  [OP_ZK_BALLOT] = 0, [OP_ZK_WITNESS] = 0, [OP_ZK_CAST] = 4, [OP_ZK_PROVE] = 1, [OP_ZK_PROJECT] = 2, [OP_ZK_CHECK] = 4,
   [OP_INTERVAL] = 0, [OP_TRANSP] = 3,
   [OP_SYSTEM] = VARIES, [OP_HCOMP] = 4, [OP_FIN] = 1, [OP_FIN_ADD] = 3,
   [OP_FIN_NEG] = 2, [OP_FIN_CASE] = VARIES, [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
@@ -1605,6 +1608,210 @@ static const Value *zk_verify(Machine *m, const Value *const *a, uint32_t n) {
   return internal(m, "an unknown bLSAG verdict");
 }
 
+/* Only the trusted domain Pos family has the Size-indexed position encoding. */
+static int zk_pos_type(const Machine *m, const Value *t) {
+  if (!val_is(t, OP_FAMILY) || t->inst >= m->family_count || t->argc != 1u)
+    return 0;
+  const FamilyInfo *f = &m->families[t->inst];
+  return f->origin == ORIGIN_DOMAIN && f->param_count == 0u && f->index_count == 1u
+    && strcmp(f->name, "Pos") == 0;
+}
+
+/* Read a closed domain Size without interpreting an open tail as zero. */
+static int zk_size(const Machine *m, const Value *v, uint64_t *n) {
+  *n = 0u;
+  while (val_is(v, OP_CTOR) && v->inst < m->ctor_count) {
+    const CtorInfo *c = &m->ctors[v->inst];
+    if (c->family >= m->family_count)
+      return 0;
+    const FamilyInfo *f = &m->families[c->family];
+    if (f->origin != ORIGIN_DOMAIN || strcmp(f->name, "Size") != 0)
+      return 0;
+    if (strcmp(c->name, "sz0") == 0 && v->argc == 0u)
+      return 1;
+    if (strcmp(c->name, "szS") != 0 || v->argc != 1u || *n == UINT64_MAX)
+      return 0;
+    (*n)++;
+    v = v->args[0];
+  }
+  return 0;
+}
+
+/* The cardinality of a closed finite type: Unit 1, Sum adds both sides,
+   Fin k is k, Pos n has the size n. 0 for an open or unknown shape. */
+static int zk_card(const Machine *m, const Value *t, uint64_t *n) {
+  uint64_t left;
+  uint64_t right;
+  if (val_is(t, OP_UNIT)) {
+    *n = 1u;
+    return 1;
+  }
+  if (val_is(t, OP_SUM)) {
+    if (!zk_card(m, t->args[0], &left) || !zk_card(m, t->args[1], &right) || left > UINT64_MAX - right)
+      return 0;
+    *n = left + right;
+    return 1;
+  }
+  if (val_is(t, OP_FIN) && t->args[0]->kind == VAL_NAT) {
+    *n = t->args[0]->nat;
+    return 1;
+  }
+  if (zk_pos_type(m, t))
+    return zk_size(m, t->args[0], n);
+  return 0;
+}
+
+/* The constructor index of the closed value V in the finite type T: unit
+   0, inl x the index of x in A, inr x the cardinality of A plus the index
+   of x in B, a Fin literal its number, posNext adds one to posFirst's zero.
+   0 on an open value or an index that cannot fit in a host word. */
+static int zk_index(const Machine *m, const Value *t, const Value *v, uint64_t *i) {
+  uint64_t left;
+  if (val_is(t, OP_UNIT) && val_is(v, OP_UNIT_VAL)) {
+    *i = 0u;
+    return 1;
+  }
+  if (val_is(t, OP_SUM) && val_is(v, OP_INL))
+    return zk_index(m, t->args[0], v->args[0], i);
+  if (val_is(t, OP_SUM) && val_is(v, OP_INR)) {
+    if (!zk_card(m, t->args[0], &left) || !zk_index(m, t->args[1], v->args[0], i) || *i > UINT64_MAX - left)
+      return 0;
+    *i += left;
+    return 1;
+  }
+  if (val_is(t, OP_FIN) && v->kind == VAL_NAT) {
+    *i = v->nat;
+    return 1;
+  }
+  if (zk_pos_type(m, t) && zk_card(m, t, &left)) {
+    *i = 0u;
+    while (val_is(v, OP_CTOR) && v->inst < m->ctor_count) {
+      const CtorInfo *c = &m->ctors[v->inst];
+      if (c->family != t->inst)
+        return 0;
+      if (strcmp(c->name, "posFirst") == 0 && v->argc == 1u)
+        return *i < left;
+      if (strcmp(c->name, "posNext") != 0 || v->argc != 2u || *i == UINT64_MAX)
+        return 0;
+      (*i)++;
+      v = v->args[1];
+    }
+  }
+  return 0;
+}
+
+/* The member ring: P_k = G times the test key of member k, for k below
+   CARD (1 to BLSAG_RING_MAX). 0 when CARD is out of range or the generator
+   words (1, 2) give no point. */
+static int zk_member_ring(G1 *ring, uint64_t card) {
+  G1 gen;
+  U256 one;
+  U256 two;
+  U256 key;
+  uint32_t i;
+  u256_from_u64(&one, 1u);
+  u256_from_u64(&two, 2u);
+  if (card == 0 || card > BLSAG_RING_MAX || !g1_from_words(&gen, &one, &two))
+    return 0;
+  for (i = 0; i < (uint32_t)card; i++) {
+    blsag_key(&key, i);
+    g1_mul(&ring[i], &gen, &key);
+  }
+  return 1;
+}
+
+/* zkCast M C m c stores its arguments, even under binders. Only zkProve
+   needs their closed finite encoding; zkProject just reads the choice. */
+static const Value *zk_cast(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = trap_arg(a, n);
+  if (out != NULL)
+    return out;
+  return val_op(m, VAL_OP, OP_ZK_CAST, 0, 0, a, n);
+}
+
+/* zkProve b: the witness of a canonical ballot, the word list poll id 0,
+   c_1, s_1 to s_n, I.x, I.y (n + 4 words). The ring is the member ring, the
+   signer the member of the ballot, the choice word its constructor index.
+   A sign failure is overflow; an open b is stuck. */
+static const Value *zk_prove(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = trap_arg(a, n);
+  const Value *b = a[0];
+  G1 ring[BLSAG_RING_MAX];
+  U256 key;
+  U256 poll;
+  U256 choice;
+  U256 sig[BLSAG_RING_MAX + 3u];
+  uint64_t card;
+  uint64_t member;
+  uint64_t index;
+  uint32_t i;
+  if (out != NULL)
+    return out;
+  if (!val_is(b, OP_ZK_CAST) || !zk_card(m, b->args[0], &card) || !zk_index(m, b->args[0], b->args[2], &member) || !zk_index(m, b->args[1], b->args[3], &index))
+    return opaque(m, OP_ZK_PROVE, a, n);
+  if (!zk_member_ring(ring, card))
+    return overflow(m);
+  blsag_key(&key, member);
+  u256_from_u64(&poll, 0u);
+  u256_from_u64(&choice, index);
+  if (!blsag_sign(sig, ring, (uint32_t)card, &key, &poll, &choice))
+    return overflow(m);
+  out = constant(m, OP_NIL);
+  for (i = (uint32_t)card + 3u; i > 0; i--)
+    out = make(m, VAL_OP, OP_CONS, 0, 2, word_value(m, &sig[i - 1u]), out, NULL);
+  return make(m, VAL_OP, OP_CONS, 0, 2, word_value(m, &poll), out, NULL);
+}
+
+/* zkProject C b: the choice of a canonical ballot. */
+static const Value *zk_project(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = trap_arg(a, n);
+  if (out != NULL)
+    return out;
+  return val_is(a[1], OP_ZK_CAST) ? a[1]->args[3] : opaque(m, OP_ZK_PROJECT, a, n);
+}
+
+/* zkCheck M C w c: the type Unit when the host accepts the witness w (poll
+   id w[0], then the n + 3 signature words) for the member ring of M and
+   the choice c. Stuck, so neutral, when a word is open, the length is not
+   n + 4 or the host rejects; a bad ring or key image is overflow. */
+static const Value *zk_check(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out = trap_arg(a, n);
+  const Value *items[BLSAG_RING_MAX + 5u];
+  G1 ring[BLSAG_RING_MAX];
+  U256 choice;
+  U256 sig[BLSAG_RING_MAX + 3u];
+  uint64_t card;
+  uint64_t index;
+  uint32_t len = 0;
+  uint32_t i;
+  if (out != NULL)
+    return out;
+  if (!closed_list(a[2], items, BLSAG_RING_MAX + 4u, &len, &out))
+    return out != NULL ? out : opaque(m, OP_ZK_CHECK, a, n);
+  for (i = 0; i < len && i < BLSAG_RING_MAX + 4u; i++) {
+    if (items[i]->kind != VAL_WORD)
+      return opaque(m, OP_ZK_CHECK, a, n);
+  }
+  if (!zk_card(m, a[0], &card) || !zk_index(m, a[1], a[3], &index))
+    return opaque(m, OP_ZK_CHECK, a, n);
+  if (card == 0 || card > BLSAG_RING_MAX || len != (uint32_t)card + 4u)
+    return opaque(m, OP_ZK_CHECK, a, n);
+  if (!zk_member_ring(ring, card))
+    return overflow(m);
+  u256_from_u64(&choice, index);
+  for (i = 0; i < (uint32_t)card + 3u; i++)
+    sig[i] = *items[i + 1u]->word;
+  switch (blsag_verify(ring, (uint32_t)card, items[0]->word, &choice, sig)) {
+  case BLSAG_ACCEPT:
+    return constant(m, OP_UNIT);
+  case BLSAG_REJECT:
+    return opaque(m, OP_ZK_CHECK, a, n);
+  case BLSAG_TRAP:
+    return overflow(m);
+  }
+  return internal(m, "an unknown bLSAG verdict");
+}
+
 /* finAdd n a b: (a + b) mod n, with no overflow. A[0] is n. */
 static const Value *fin_add(Machine *m, const Value *const *a, uint32_t n) {
   const Value *out;
@@ -2170,6 +2377,8 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_FIN:
   case OP_FLAG:
   case OP_UNIT:
+  case OP_ZK_BALLOT:
+  case OP_ZK_WITNESS:
   case OP_U256:
   case OP_ADDR:
   case OP_KMAP:
@@ -2269,6 +2478,10 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_ZK_DIGEST:
   case OP_ZK_SIGN:
   case OP_ZK_VERIFY:
+  case OP_ZK_CAST:
+  case OP_ZK_PROVE:
+  case OP_ZK_PROJECT:
+  case OP_ZK_CHECK:
   case OP_TRANSP:
   case OP_SYSTEM:
   case OP_HCOMP:
@@ -3156,6 +3369,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_U256:
   case OP_ADDR:
   case OP_UNIT:
+  case OP_ZK_BALLOT:
+  case OP_ZK_WITNESS:
   case OP_PROD:
   case OP_SUM:
   case OP_OPTION:
@@ -3260,6 +3475,14 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return zk_sign(m, a, n);
   case OP_ZK_VERIFY:
     return zk_verify(m, a, n);
+  case OP_ZK_CAST:
+    return zk_cast(m, a, n);
+  case OP_ZK_PROVE:
+    return zk_prove(m, a, n);
+  case OP_ZK_PROJECT:
+    return zk_project(m, a, n);
+  case OP_ZK_CHECK:
+    return zk_check(m, a, n);
   case OP_FLAG_IF:
     return reduce_flag_if(m, a, n);
   case OP_PROJ:

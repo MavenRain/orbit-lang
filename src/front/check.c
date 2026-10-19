@@ -108,7 +108,11 @@ typedef enum {
   RULE_FIN_OP,
   RULE_GLUE,
   RULE_GLUE_ELEM,
-  RULE_UNGLUE
+  RULE_UNGLUE,
+  RULE_ZK_CAST,    /* S8 B2b: zkCast M C m c */
+  RULE_ZK_PROVE,   /* zkProve b */
+  RULE_ZK_PROJECT, /* zkProject C b */
+  RULE_ZK_CHECK    /* zkCheck M C w c */
 } Rule;
 
 typedef struct {
@@ -199,7 +203,13 @@ static const Builtin BUILTINS[] = {
   {"zkKey", 1, RULE_FIXED, OP_ZK_KEY, OP_U256, 0, VIS_INTERNAL},
   {"zkDigest", 1, RULE_FIXED, OP_ZK_DIGEST, OP_U256, 0, VIS_INTERNAL},
   {"zkSign", 4, RULE_FIXED, OP_ZK_SIGN, OP_LIST, 0, VIS_INTERNAL},
-  {"zkVerify", 4, RULE_FIXED, OP_ZK_VERIFY, OP_FLAG, 0, VIS_INTERNAL}
+  {"zkVerify", 4, RULE_FIXED, OP_ZK_VERIFY, OP_FLAG, 0, VIS_INTERNAL},
+  {"ZkBallot", 0, RULE_TYPE0, OP_ZK_BALLOT, OP_NAT, 0, VIS_INTERNAL},
+  {"ZkWitness", 0, RULE_TYPE0, OP_ZK_WITNESS, OP_NAT, 0, VIS_INTERNAL},
+  {"zkCast", 4, RULE_ZK_CAST, OP_ZK_CAST, OP_ZK_BALLOT, 0, VIS_INTERNAL},
+  {"zkProve", 1, RULE_ZK_PROVE, OP_ZK_PROVE, OP_ZK_WITNESS, 0, VIS_INTERNAL},
+  {"zkProject", 2, RULE_ZK_PROJECT, OP_ZK_PROJECT, OP_NAT, 0, VIS_INTERNAL},
+  {"zkCheck", 4, RULE_ZK_CHECK, OP_ZK_CHECK, OP_NAT, 0, VIS_INTERNAL}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -2192,6 +2202,63 @@ static const Core *rule_fixed(Call *k) {
   return core_op(c, k->b->op, 0, 0, args, k->b->arity);
 }
 
+/* zkCast M C m c (S8 B2b): M and C in Type 0, m : M, c : C; a ZkBallot.
+   The types are arguments because the constructor index needs the type. */
+static const Core *rule_zk_cast(Call *k) {
+  Checker *c = k->c;
+  const Core *args[4] = {NULL, NULL, NULL, NULL};
+  args[0] = check(c, k->args[0], val_univ(c->m, 0));
+  args[1] = check(c, k->args[1], val_univ(c->m, 0));
+  if (args[0] == NULL || args[1] == NULL)
+    return NULL;
+  args[2] = check(c, k->args[2], here(c, args[0]));
+  args[3] = check(c, k->args[3], here(c, args[1]));
+  if (args[2] == NULL || args[3] == NULL)
+    return NULL;
+  k->type = tyop(c, OP_ZK_BALLOT, 0, NULL, NULL, NULL);
+  return core_op(c, OP_ZK_CAST, 0, 0, args, 4u);
+}
+
+/* zkProve b: b : ZkBallot; a ZkWitness. */
+static const Core *rule_zk_prove(Call *k) {
+  Checker *c = k->c;
+  const Core *args[1] = {NULL};
+  args[0] = check(c, k->args[0], tyop(c, OP_ZK_BALLOT, 0, NULL, NULL, NULL));
+  if (args[0] == NULL)
+    return NULL;
+  k->type = tyop(c, OP_ZK_WITNESS, 0, NULL, NULL, NULL);
+  return core_op(c, OP_ZK_PROVE, 0, 0, args, 1u);
+}
+
+/* zkProject C b: C in Type 0, b : ZkBallot; the choice, of type C. */
+static const Core *rule_zk_project(Call *k) {
+  Checker *c = k->c;
+  const Core *args[2] = {NULL, NULL};
+  args[0] = check(c, k->args[0], val_univ(c->m, 0));
+  args[1] = check(c, k->args[1], tyop(c, OP_ZK_BALLOT, 0, NULL, NULL, NULL));
+  if (args[0] == NULL || args[1] == NULL)
+    return NULL;
+  k->type = here(c, args[0]);
+  return core_op(c, OP_ZK_PROJECT, 0, 0, args, 2u);
+}
+
+/* zkCheck M C w c: M and C in Type 0, w : ZkWitness, c : C; a type in
+   Type 0 (Unit on a host pass, neutral otherwise). */
+static const Core *rule_zk_check(Call *k) {
+  Checker *c = k->c;
+  const Core *args[4] = {NULL, NULL, NULL, NULL};
+  args[0] = check(c, k->args[0], val_univ(c->m, 0));
+  args[1] = check(c, k->args[1], val_univ(c->m, 0));
+  if (args[0] == NULL || args[1] == NULL)
+    return NULL;
+  args[2] = check(c, k->args[2], tyop(c, OP_ZK_WITNESS, 0, NULL, NULL, NULL));
+  args[3] = check(c, k->args[3], here(c, args[1]));
+  if (args[2] == NULL || args[3] == NULL)
+    return NULL;
+  k->type = val_univ(c->m, 0);
+  return core_op(c, OP_ZK_CHECK, 0, 0, args, 4u);
+}
+
 /* Fin n: n : Nat, Fin n : Type 0. */
 static const Core *rule_fin(Call *k) {
   const Core *n = check(k->c, k->args[0], nat_type(k->c));
@@ -2354,6 +2421,14 @@ static const Core *rule(Call *k) {
     return kmap_access(k, 1);
   case RULE_FIXED:
     return rule_fixed(k);
+  case RULE_ZK_CAST:
+    return rule_zk_cast(k);
+  case RULE_ZK_PROVE:
+    return rule_zk_prove(k);
+  case RULE_ZK_PROJECT:
+    return rule_zk_project(k);
+  case RULE_ZK_CHECK:
+    return rule_zk_check(k);
   }
   return NULL;
 }
@@ -3751,9 +3826,11 @@ static int check_sig(Checker *c, const Decl *d, const Value *tv) {
 
 /* The kernel gives each defined name of the design signature: Orbit and
    orbitProj after act (orbit-lang S4), the DAO prelude after the last of
-   act and outcomeSet (S7, PLAN section 8). A program declaration of a
-   defined name is REFUSE_SIG, before the name check, so the code is the
-   same before and after the kernel gives it. */
+   act and outcomeSet (S7, PLAN section 8), and each primitive name in the
+   ZK splice after Member, Choice and the DAO prelude (S8 B2b). A program
+   declaration of a defined or primitive name is REFUSE_SIG, before the
+   name check, so the code is the same before and after the kernel gives
+   it. */
 static int kernel_sig(Checker *c, const Decl *d) {
   uint32_t i = sig_row(d->name);
   if (d->origin != ORIGIN_PROGRAM || i == SIG_COUNT)
@@ -3761,8 +3838,9 @@ static int kernel_sig(Checker *c, const Decl *d) {
   switch (SIGNATURE[i].kind) {
   case SIG_DEFINED:
     return FAIL(c, "REFUSE_SIG", "%s is a defined name of the design signature (PLAN section 3); the kernel gives it (Orbit and orbitProj after act, the DAO prelude after act and outcomeSet)", d->name);
-  case SIG_SLOT:
   case SIG_PRIMITIVE:
+    return FAIL(c, "REFUSE_SIG", "%s is a primitive name of the design signature (PLAN section 3); the kernel gives it (the ZK splice after Member, Choice and the DAO prelude)", d->name);
+  case SIG_SLOT:
     break;
   }
   return 1;

@@ -91,6 +91,12 @@ typedef enum {
   OP_ZK_DIGEST,
   OP_ZK_SIGN,
   OP_ZK_VERIFY,
+  OP_ZK_BALLOT,  /* ZkBallot: the private ballot carrier (S8 B2b) */
+  OP_ZK_WITNESS, /* ZkWitness: the witness carrier; OP_WITNESS is the Sigma projection */
+  OP_ZK_CAST,    /* zkCast M C m c: a canonical ballot, the arguments kept */
+  OP_ZK_PROVE,   /* zkProve b: the witness word list, poll id first */
+  OP_ZK_PROJECT, /* zkProject C b: the choice of a ballot */
+  OP_ZK_CHECK,   /* zkCheck M C w c: the type Unit on a host pass, else neutral */
   OP_INTERVAL, /* the sort I: never a type, only the type of an interval term */
   OP_TRANSP,   /* transp L phi a: L a line (a path value in U), phi a face */
   OP_SYSTEM,   /* a system: key0, branch0, key1, branch1, ...; each branch a PLAM */

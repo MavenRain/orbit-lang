@@ -181,3 +181,7 @@ def history : Charter Outcome -> Aggregation :=
 def charterOne : Charter Outcome := adopt Outcome (genesis Outcome) (ratify Outcome (genesis Outcome) (inl unit))
 def historyOne : Outcome := history charterOne splitTally
 def historyOneIs : Path Outcome historyOne tallied := refl
+def b0 : Ballot_priv := castPrivate (inl unit) (inr unit)
+def w0 : ZKWitness := proveZK b0
+def c0 : Choice := project b0
+def complete : Path (Type 0) (verifyZK w0 c0 splitTally) Unit := refl

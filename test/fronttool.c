@@ -99,8 +99,51 @@ static int zk_trap(const char *type, const char *body) {
   return ok;
 }
 
+static int zk_kernel(const char *member_type, const char *member,
+                     const char *choice_type, const char *choice,
+                     const char *checked_choice, const char *want) {
+  char source[4096];
+  snprintf(source, sizeof source,
+           "family Size := sz0 | szS (szPred : Size)\n"
+           "family Pos : Size -> Type 0 := posFirst (firstSize : Size) : Pos (szS firstSize)\n"
+           "  | posNext (nextSize : Size) (nextPos : Pos nextSize) : Pos (szS nextSize)\n"
+           "def M : Type 0 := %s\n"
+           "def C : Type 0 := %s\n"
+           "def b : ZkBallot := zkCast M C (%s) (%s)\n"
+           "def complete : Path (Type 0) (zkCheck M C (zkProve b) (%s)) Unit := refl\n",
+           member_type, choice_type, member, choice, checked_choice);
+  return domain(source, want);
+}
+
 int main(void) {
   int ok = 1;
+  /* Projection only reads the stored choice, including under binders. */
+  ok &= domain("def projected : (M : Type 0) -> (C : Type 0) -> (m : M) -> (c : C) -> "
+               "Path C (zkProject C (zkCast M C m c)) c := "
+               "fun (M : Type 0) (C : Type 0) (m : M) (c : C) => refl", NULL);
+  /* A choice index must not wrap to that of a different constructor. */
+  ok &= zk_kernel("Unit", "unit", "Sum (Fin 18446744073709551615) (Sum Unit Unit)",
+                  "inl 0", "inr (inr unit)", "PATH_END");
+  ok &= zk_kernel("Unit", "unit", "Sum (Fin 18446744073709551615) Unit",
+                  "inr unit", "inr unit", NULL);
+  /* Pos is the member type of the bag-orbit DAO, with zero-based positions. */
+  ok &= zk_kernel("Pos (szS sz0)", "posFirst sz0", "Sum Unit Unit",
+                  "inl unit", "inl unit", NULL);
+  ok &= zk_kernel("Pos (szS (szS (szS sz0)))", "posNext (szS (szS sz0)) (posNext (szS sz0) (posFirst sz0))",
+                  "Pos (szS (szS sz0))", "posNext (szS sz0) (posFirst sz0)",
+                  "posNext (szS sz0) (posFirst sz0)", NULL);
+  ok &= zk_kernel("Pos (szS (szS (szS sz0)))", "posNext (szS (szS sz0)) (posNext (szS sz0) (posFirst sz0))",
+                  "Pos (szS (szS sz0))", "posNext (szS sz0) (posFirst sz0)",
+                  "posFirst (szS sz0)", "PATH_END");
+  ok &= domain("family Size := sz0 | szS (szPred : Size)\n"
+               "family Pos : Size -> Type 0 := posFirst (firstSize : Size) : Pos (szS firstSize)\n"
+               "  | posNext (nextSize : Size) (nextPos : Pos nextSize) : Pos (szS nextSize)\n"
+               "def sameEncoding : Path ZkWitness "
+               "(zkProve (zkCast (Pos (szS (szS (szS sz0)))) (Pos (szS (szS sz0))) "
+               "(posNext (szS (szS sz0)) (posNext (szS sz0) (posFirst sz0))) "
+               "(posNext (szS sz0) (posFirst sz0)))) "
+               "(zkProve (zkCast (Sum Unit (Sum Unit Unit)) (Sum Unit Unit) "
+               "(inr (inr unit)) (inr unit))) := refl", NULL);
   ok &= zk_trap("Prod U256 U256", "zkHp (pair bad 2u)");
   ok &= zk_trap("U256", "zkDigest (cons (pair bad 2u) nil)");
   ok &= zk_trap("U256", "zkDigest (cons (flagIf (u256Eq bad 0u) (pair 1u 2u) (pair 1u 2u)) nil)");
