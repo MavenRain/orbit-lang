@@ -96,17 +96,46 @@ fi
 
 # The private cast of examples/zkcast.lang (S8 B3a): the ring (p0, p1) at poll 0.
 # The six words are the `dao b0` row of test/prove/expect.txt (choice, c_1, s_1,
-# s_2, I.x, I.y): the valid cast enters, count 1 reads 1, the same key image reverts.
+# s_2, I.x, I.y): six refusals revert (S8 B3b), the valid cast enters, count 1
+# reads 1, the same key image reverts.
 prog=examples/zkcast.lang
 c1=39381386088514315497347125331661662002366806678711758872472619958305300356361u
 s1=10556691046619535408078082753355190806958972782948105030448836431921968396625u
 s2=5075046572376896310100317466143363171635445558286582457308097647558945948934u
 ix=10761449505403964036076757638925780734653286855769319211451479689235022075489u
 iy=7813043007448227325775284969956458831967279497483528366357925175793623591926u
+# The refusal words: bad1 to bad5 = c_1, s_1, s_2, I.x, I.y of a signature by
+# zkKey 2 over the ring (p0, p2) at poll 0 (the host refuses it on the cast
+# ring); p71 to p75 = the b0 member signed at poll 7u; s1r = s_1 + r.
+bad1=114233635948204567937611136005807964635379552110520686947477480399687734882175u
+bad2=4606903119986625213584159387736508097390161799663041052171944740195199651320u
+bad3=19405452480297225842144819244991036144939704859909575586366782468791467929709u
+bad4=12143800741274053729678695342025405071161578280145823471976847353119162962133u
+bad5=5478805016161928785310155891281398518466491099139863695584469452713860577342u
+p71=115326832689243201939208783265390243471483834046477764896127408546428269123821u
+p72=6848704374829197146497408100537308754776627187049601801861139456475064325019u
+p73=5324371756747053231067432293918824366492735010707968715625973090356803969703u
+p74=10761449505403964036076757638925780734653286855769319211451479689235022075489u
+p75=7813043007448227325775284969956458831967279497483528366357925175793623591926u
+s1r=32444933918458810630324488498612465895507337183364139374147040618497776892242u
 if ! deploy "$prog"; then
   echo "FAIL zkcast deploy: $(head -n 1 "$tmp/dump")"
   fail=$((fail + 1))
 else
+  # Six refusals before the valid cast: the entry checks the used key first, so
+  # a vector with the b0 key image placed after the cast would revert for the key.
+  # A signer outside the ring (p0, p1): the hash chain does not close.
+  call revert cast 1u "$bad1" "$bad2" "$bad3" "$bad4" "$bad5"
+  # The b0 words with the choice flipped to 0: the choice is in the hash.
+  call revert cast 0u "$c1" "$s1" "$s2" "$ix" "$iy"
+  # The b0 member signed at poll 7u: the poll id is in the hash.
+  call revert cast 1u "$p71" "$p72" "$p73" "$p74" "$p75"
+  # I = (1, 1) is not on bn254: the ecMul precompile returns 0, the code reverts.
+  call revert cast 1u "$c1" "$s1" "$s2" 1u 1u
+  # I = (0, 0): the precompile takes infinity, the chain fails, the last flag refuses.
+  call revert cast 1u "$c1" "$s1" "$s2" 0u 0u
+  # s_1 + r: the precompile reduces mod r and the chain closes; u256Le s_1 rmax refuses.
+  call revert cast 1u "$c1" "$s1r" "$s2" "$ix" "$iy"
   call ok cast 1u "$c1" "$s1" "$s2" "$ix" "$iy"
   call "out 1" count 1u
   call revert cast 1u "$c1" "$s1" "$s2" "$ix" "$iy"
