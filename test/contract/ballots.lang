@@ -1,0 +1,14 @@
+-- The ballots of the written DAO contract (test/precompile.sh, S9 B1): `langc prove test/contract/ballots.lang NAME POLL`
+-- gives the cast calldata (choice, c_1, s_1, s_2, I.x, I.y). The ring depends only on the Member cardinality (2, as in
+-- examples/dao.lang). Choice has a third constructor, so m1c2 is a valid signature over a choice that the contract refuses.
+def Member : Type 0 := Sum Unit Unit
+def Choice : Type 0 := Sum Unit (Sum Unit Unit)
+def Outcome : Type 0 := Trunc0 Unit
+def Group : Type 0 := Sum Unit Unit
+def flip : Choice -> Choice := fun (c : Choice) => c
+def act : Group -> (Member -> Choice) -> Member -> Choice :=
+  fun (g : Group) (f : Member -> Choice) (m : Member) => either (fun (u : Unit) => f m) (fun (u : Unit) => flip (f m)) g
+def outcomeSet : isSet Outcome := fun (x : Outcome) (y : Outcome) (p : Path Outcome x y) (q : Path Outcome x y) => fun (i : I) => fun (j : I) => squash0 Unit x y p q i j
+def m0c0 : Ballot_priv := castPrivate (inl unit) (inl unit)
+def m1c1 : Ballot_priv := castPrivate (inr unit) (inr (inl unit))
+def m1c2 : Ballot_priv := castPrivate (inr unit) (inr (inr unit))

@@ -1,0 +1,43 @@
+-- The DAO contract of examples/dao.lang (langc contract, S9 B1): 2 members, 2 choices, 2 outcomes, 2 constitutions.
+-- The ring is closed, the nullifier and the tally keys hold the poll id, enact is the amend of the design.
+def g : Prod U256 U256 := pair 1u 2u
+def k0 : U256 := zkKey 0
+def p0 : Prod U256 U256 := ecMul g k0
+def k1 : U256 := zkKey 1
+def p1 : Prod U256 U256 := ecMul g k1
+def ring : List (Prod U256 U256) := cons p0 (cons p1 nil)
+
+state State := makeState (used : Map U256 Flag) (tally : Map U256 U256)
+  (pollId : U256) (active : U256) (prior : U256) (casts : U256)
+def init : State := makeState mapEmpty mapEmpty 0u 0u 2u 0u
+
+def votes : State -> U256 -> U256 := fun (s : State) (c : U256) => mapGet (tally s) (hash (pollId s) c)
+def outcomeOf : State -> U256 := fun (s : State) => flagIf (u256Le 2u (casts s))
+  (flagIf (u256Eq (active s) 0u) (flagIf (u256Eq (votes s 0u) 2u) 0u (flagIf (u256Eq (votes s 0u) 1u) 1u (flagIf (u256Eq (votes s 0u) 0u) 0u 2u))) (flagIf (u256Eq (active s) 1u) (flagIf (u256Eq (votes s 0u) 2u) 0u (flagIf (u256Eq (votes s 0u) 1u) 0u (flagIf (u256Eq (votes s 0u) 0u) 0u 2u))) 2u))
+  2u
+def nextOf : State -> U256 := fun (s : State) =>
+  (flagIf (u256Eq (active s) 0u) (flagIf (u256Eq (votes s 0u) 2u) 0u (flagIf (u256Eq (votes s 0u) 1u) 1u (flagIf (u256Eq (votes s 0u) 0u) 0u (active s)))) (flagIf (u256Eq (active s) 1u) (flagIf (u256Eq (votes s 0u) 2u) 0u (flagIf (u256Eq (votes s 0u) 1u) 0u (flagIf (u256Eq (votes s 0u) 0u) 0u (active s)))) (active s)))
+
+-- Entry: a choice out of range, a used key image or a failed verify reverts, else the cast is counted.
+def cast : (env : Env) -> (s : State) -> (choice c1 s1 s2 ix iy : U256) -> Option (Prod State (List Out)) :=
+  fun (env : Env) (s : State) (choice c1 s1 s2 ix iy : U256) =>
+    flagIf (u256Le 2u choice) none
+      (flagIf (mapGet (used s) (hash (hash ix iy) (pollId s))) none
+        (flagIf (zkVerify ring (pollId s) choice (cons c1 (cons s1 (cons s2 (cons ix (cons iy nil))))))
+          (some (pair (makeState (mapSet (used s) (hash (hash ix iy) (pollId s)) flagYes)
+            (mapSet (tally s) (hash (pollId s) choice) (u256Add (votes s choice) 1u))
+            (pollId s) (active s) (prior s) (u256Add (casts s) 1u)) nil))
+          none))
+
+-- Entry: before every member casts it reverts, else the next constitution is the menu of the outcome.
+def enact : (env : Env) -> (s : State) -> Option (Prod State (List Out)) :=
+  fun (env : Env) (s : State) => flagIf (u256Le 2u (casts s))
+    (some (pair (makeState (used s) (tally s) (u256Add (pollId s) 1u) (nextOf s) (active s) 0u) nil))
+    none
+
+-- Views.
+def count : (env : Env) -> (s : State) -> (choice : U256) -> U256 := fun (env : Env) (s : State) (choice : U256) => votes s choice
+def outcome : (env : Env) -> (s : State) -> U256 := fun (env : Env) (s : State) => outcomeOf s
+def selfConstituting : (env : Env) -> (s : State) -> Flag := fun (env : Env) (s : State) => u256Eq (active s) (prior s)
+def poll : (env : Env) -> (s : State) -> U256 := fun (env : Env) (s : State) => pollId s
+def constitution : (env : Env) -> (s : State) -> U256 := fun (env : Env) (s : State) => active s

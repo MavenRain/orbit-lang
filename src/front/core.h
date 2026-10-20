@@ -366,6 +366,10 @@ const Value *val_word(Machine *m, uint64_t sort, const U256 *word);
    or m or c has no constructor index. TRAP: the ring or the signing fails. */
 typedef enum { ZK_WITNESS_OK, ZK_WITNESS_OPEN, ZK_WITNESS_TRAP } ZkWitnessVerdict;
 ZkWitnessVerdict zk_witness(Machine *m, const Value *b, const U256 *poll, U256 *choice, U256 *sig, uint32_t *n);
+/* The constructor index of the closed value V in the finite type T (unit 0,
+   inl and inr by cardinality, Fin, Pos). Returns 0 on an open value. Shared
+   by zk_witness and the contract writer (S9 B1). */
+int zk_index(const Machine *m, const Value *t, const Value *v, uint64_t *i);
 const Value *val_var(Machine *m, uint32_t level);
 /* The interval variable at LEVEL. */
 const Value *val_ivar(Machine *m, uint32_t level);

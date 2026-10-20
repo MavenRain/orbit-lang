@@ -1751,7 +1751,7 @@ static int zk_card(const Machine *m, const Value *t, uint64_t *n) {
    0, inl x the index of x in A, inr x the cardinality of A plus the index
    of x in B, a Fin literal its number, posNext adds one to posFirst's zero.
    0 on an open value or an index that cannot fit in a host word. */
-static int zk_index(const Machine *m, const Value *t, const Value *v, uint64_t *i) {
+int zk_index(const Machine *m, const Value *t, const Value *v, uint64_t *i) {
   uint64_t left;
   if (val_is(t, OP_UNIT) && val_is(v, OP_UNIT_VAL)) {
     *i = 0u;

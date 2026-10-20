@@ -141,6 +141,45 @@ else
   call revert cast 1u "$c1" "$s1" "$s2" "$ix" "$iy"
 fi
 
+# The written DAO contract (S9 B1): the text of `langc contract examples/dao.lang`.
+# The cast words come from `langc prove test/contract/ballots.lang NAME POLL`
+# (choice, c_1, s_1, s_2, I.x, I.y): the prove ring depends only on the Member
+# cardinality, 2 as in examples/dao.lang. Before 2 casts the outcome is 2 (no
+# outcome). m0 votes 0 and m1 votes 1, so agree0 gives outcome 1; enact adopts
+# constitution 1 and opens poll 1, where the poll 0 words of m0 revert.
+build/langc contract examples/dao.lang >"$tmp/dao.lang"
+prog="$tmp/dao.lang"
+ballot() {
+  build/langc prove test/contract/ballots.lang "$1" "$2" | tr '\n' ' '
+}
+if ! deploy "$prog"; then
+  echo "FAIL contract deploy: $(head -n 1 "$tmp/dump")"
+  fail=$((fail + 1))
+else
+  m0p0=$(ballot m0c0 0u)
+  m0p1=$(ballot m0c0 1u)
+  m1p0=$(ballot m1c1 0u)
+  m1c2=$(ballot m1c2 0u)
+  call "out 2" outcome
+  call revert enact
+  call "out 0" selfConstituting
+  call ok cast $m0p0
+  call revert cast $m0p0
+  # A valid signature over choice 2: the contract has 2 choices.
+  call revert cast $m1c2
+  call ok cast $m1p0
+  call "out 1" count 0u
+  call "out 1" count 1u
+  call "out 1" outcome
+  call ok enact
+  call "out 1" poll
+  call "out 1" constitution
+  call "out 0" selfConstituting
+  call revert cast $m0p0
+  call ok cast $m0p1
+  call "out 1" count 0u
+fi
+
 rm -rf "$tmp"
 echo "precompile: $steps steps checked"
 echo "precompile gate: $fail failures"

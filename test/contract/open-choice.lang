@@ -1,0 +1,23 @@
+-- A guest program with every DAO slot whose Choice is not a Sum Unit chain: langc contract refuses it (REFUSE_CONTRACT Choice).
+def Member : Type 0 := Sum Unit Unit
+def Choice : Type 0 := Sum (Sum Unit Unit) Unit
+def Outcome : Type 0 := Unit
+def Group : Type 0 := Sum Unit Unit
+def flip : Choice -> Choice := fun (c : Choice) => c
+def act : Group -> (Member -> Choice) -> Member -> Choice :=
+  fun (g : Group) (f : Member -> Choice) (m : Member) => either (fun (u : Unit) => f m) (fun (u : Unit) => flip (f m)) g
+-- Sets from loops: when each loop is refl, J on q gives isSet A.
+def setFromLoops : (A : Type 0) -> ((x : A) -> (p : Path A x x) -> Path (Path A x x) p refl) -> isSet A :=
+  fun (A : Type 0) (L : (x : A) -> (p : Path A x x) -> Path (Path A x x) p refl) (x : A) (y : A) (p : Path A x y) (q : Path A x y) =>
+    J A x (fun (z : A) (r : Path A x z) => (s : Path A x z) -> Path (Path A x z) s r) (L x) y q p
+
+-- Unit is a set. normU replaces a path from unit by the path that elim gives, and J shows that the two are equal.
+def normU : (c : Unit) -> Path Unit unit c -> Path Unit unit c :=
+  fun (c : Unit) (p : Path Unit unit c) => elim (fun (d : Unit) => Path Unit unit d) refl c
+def retrU : (c : Unit) -> (p : Path Unit unit c) -> Path (Path Unit unit c) p (normU c p) :=
+  fun (c : Unit) (p : Path Unit unit c) => J Unit unit (fun (d : Unit) (r : Path Unit unit d) => Path (Path Unit unit d) r (normU d r)) refl c p
+def loopsU : (x : Unit) -> (p : Path Unit x x) -> Path (Path Unit x x) p refl :=
+  fun (x : Unit) => elim (fun (y : Unit) => (p : Path Unit y y) -> Path (Path Unit y y) p refl) (fun (p : Path Unit unit unit) => retrU unit p) x
+def isSetUnit : isSet Unit := setFromLoops Unit loopsU
+def outcomeSet : isSet Outcome := isSetUnit
+def menu : Outcome -> Constitution := fun (o : Outcome) => pack (fun (c : Config) => unit) (fun (g : Group) (c : Config) => refl)

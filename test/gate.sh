@@ -147,6 +147,54 @@ prove_refused() {
 prove_refused 1 PROVE_BALLOT dao w0
 prove_refused 2 EVAL_ARGS dao b0 x
 
+# The contract writer (S9 B1). `langc contract examples/dao.lang` must write
+# test/contract/dao.expect byte for byte (the header holds the PATH argument, so
+# the row passes the same relative path), and `--start 1` must change only the
+# START word of init. A refusal must exit STATUS, print `langc: CODE: NAME: ...`
+# on stderr and write nothing on stdout. No guest program reaches the stuck
+# table entry (Q-S9-5), so that refusal has no row.
+written=0
+refused=0
+cfail=0
+# contract_written EXPECT ARGS...: `langc contract ARGS` must exit 0 and print EXPECT.
+contract_written() {
+  want=$1
+  shift
+  status=0
+  build/langc contract "$@" >"$tmp/out" 2>"$tmp/err" || status=$?
+  if [ "$status" -eq 0 ] && cmp -s "$tmp/out" "$want"; then
+    written=$((written + 1))
+  else
+    echo "FAIL contract $*: want exit 0 and $want, got exit $status"
+    cfail=$((cfail + 1))
+  fi
+}
+# contract_refused STATUS CODE NAME ARGS...: `langc ARGS` must exit STATUS, print
+# `langc: CODE: NAME: ...` on stderr and nothing on stdout.
+contract_refused() {
+  want_status=$1
+  code=$2
+  name=$3
+  shift 3
+  status=0
+  build/langc "$@" >"$tmp/out" 2>"$tmp/err" || status=$?
+  case "$status:$(head -n 1 "$tmp/err"):$(wc -c <"$tmp/out" | tr -d ' ')" in
+    "$want_status:langc: $code: $name: "*":0") refused=$((refused + 1)) ;;
+    *) echo "FAIL contract $*: want exit $want_status, $code and no output, got exit $status"; cfail=$((cfail + 1)) ;;
+  esac
+}
+contract_written test/contract/dao.expect examples/dao.lang
+awk '{ sub(/mapEmpty mapEmpty 0u 0u 2u 0u$/, "mapEmpty mapEmpty 0u 1u 2u 0u"); print }' test/contract/dao.expect >"$tmp/start.expect"
+contract_written "$tmp/start.expect" examples/dao.lang --start 1
+contract_refused 1 REFUSE_CONTRACT menu contract test/contract/nodao.lang
+contract_refused 1 REFUSE_CONTRACT Choice contract test/contract/open-choice.lang
+contract_refused 1 EVM_RING Member contract test/contract/ring29.lang
+# (1, 3) is not on bn254: y^2 is 9 and x^3 + 3 is 4.
+contract_refused 1 REFUSE_CONTRACT - contract examples/dao.lang --ring 1 3 1 3
+contract_refused 2 USAGE - --kit contract examples/dao.lang
+echo "contracts: $written written, $refused refused, $cfail failed"
+fail=$((fail + cfail))
+
 status=0
 build/langc 2>/dev/null || status=$?
 [ "$status" -eq 2 ] || { echo "FAIL usage: want exit 2, got $status"; fail=$((fail + 1)); }

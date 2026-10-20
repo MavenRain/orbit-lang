@@ -50,5 +50,6 @@ usage: langc [--kit] check PROG
        langc [--kit] abi PROG [--text]
        langc [--kit] build PROG [-o OUT] [--runtime]
        langc [--kit] prove PROG NAME [POLL]
+       langc contract PROG [--ring X1 Y1 ... Xn Yn] [--start O]
 --kit: the kit mode, the trusted test scope of the kit gate
 exit 2

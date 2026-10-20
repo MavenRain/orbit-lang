@@ -5,12 +5,13 @@ CFLAGS = -std=c99 -Wall -Werror -Isrc
 CLANG_FLAGS = -std=c99 -Wall -Wextra -Wswitch-enum -Werror -fsyntax-only -Isrc
 FRONT = src/front/base.c src/front/u256.c src/front/bn254.c src/front/blsag.c src/front/lexer.c src/front/parser.c src/front/front.c src/front/contract.c src/front/eval.c src/front/check.c src/keccak.c
 TARGET = src/evm.c src/asm.c
-SRC = src/main.c $(FRONT) $(TARGET) src/lower.c
+SRC = src/main.c $(FRONT) $(TARGET) src/lower.c src/front/writer.c
 TOOL = test/asmtool.c $(TARGET) src/keccak.c
 FRONT_TOOL = test/fronttool.c $(filter-out src/front/front.c,$(FRONT))
 BLSAG_TOOL = test/blsagtool.c src/front/u256.c src/front/bn254.c src/front/blsag.c src/keccak.c
 PATH_TOOL = test/pathtool.c $(filter-out src/front/front.c,$(FRONT))
 RUN_TOOL = test/runtool.c $(FRONT)
+WRITER_TOOL = test/writertool.c $(FRONT) src/front/writer.c
 SLOT_TOOL = test/slottool.c src/keccak.c
 BUILD_TOOL = test/buildtool.c $(TARGET) src/keccak.c
 LOWER_TOOL = test/lowertool.c $(FRONT) $(TARGET)
@@ -20,7 +21,7 @@ HEADERS = $(wildcard src/*.h src/front/*.h)
 
 .PHONY: build check check-clang clean
 
-build: build/langc build/asmtool build/fronttool build/blsagtool build/pathtool build/runtool build/slottool build/buildtool build/lowertool build/evmtool build/emittool
+build: build/langc build/asmtool build/fronttool build/blsagtool build/pathtool build/runtool build/writertool build/slottool build/buildtool build/lowertool build/evmtool build/emittool
 
 build/domain.c: domain/domain.lang gen/embed.c
 	mkdir -p build
@@ -48,6 +49,9 @@ build/pathtool: $(PATH_TOOL) $(HEADERS)
 build/runtool: $(RUN_TOOL) $(HEADERS) build/domain.c
 	$(TCC) $(CFLAGS) -o build/runtool $(RUN_TOOL) build/domain.c
 
+build/writertool: $(WRITER_TOOL) $(HEADERS) build/domain.c
+	$(TCC) $(CFLAGS) -o build/writertool $(WRITER_TOOL) build/domain.c
+
 build/slottool: $(SLOT_TOOL) $(HEADERS)
 	mkdir -p build
 	$(TCC) $(CFLAGS) -o build/slottool $(SLOT_TOOL)
@@ -74,13 +78,14 @@ check-clang: build/domain.c
 	$(CC) $(CLANG_FLAGS) $(BLSAG_TOOL)
 	$(CC) $(CLANG_FLAGS) $(PATH_TOOL)
 	$(CC) $(CLANG_FLAGS) $(RUN_TOOL) build/domain.c
+	$(CC) $(CLANG_FLAGS) $(WRITER_TOOL) build/domain.c
 	$(CC) $(CLANG_FLAGS) $(SLOT_TOOL)
 	$(CC) $(CLANG_FLAGS) $(BUILD_TOOL)
 	$(CC) $(CLANG_FLAGS) $(LOWER_TOOL) build/domain.c
 	$(CC) $(CLANG_FLAGS) $(EMIT_TOOL)
 	$(CC) $(CLANG_FLAGS) $(EVM_TOOL)
 
-check: build/langc build/asmtool build/fronttool build/blsagtool build/pathtool build/runtool build/slottool build/buildtool build/lowertool build/evmtool build/emittool check-clang
+check: build/langc build/asmtool build/fronttool build/blsagtool build/pathtool build/runtool build/writertool build/slottool build/buildtool build/lowertool build/evmtool build/emittool check-clang
 	sh test/gate.sh
 	sh test/run.sh
 	sh test/asm.sh
@@ -95,6 +100,7 @@ check: build/langc build/asmtool build/fronttool build/blsagtool build/pathtool 
 	build/blsagtool
 	build/pathtool
 	build/runtool
+	build/writertool
 	build/buildtool
 	build/lowertool
 	build/emittool
