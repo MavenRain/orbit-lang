@@ -28,3 +28,4 @@ univ.lang
 elim.lang
 bn254.lang
 zk.lang
+zkcast.lang

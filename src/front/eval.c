@@ -1570,9 +1570,92 @@ static const Value *zk_sign(Machine *m, const Value *const *a, uint32_t n) {
   return out;
 }
 
+static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n);
+
+/* A G1 as a closed pair of words. */
+static const Value *zk_point_value(Machine *m, const G1 *p) {
+  U256 x;
+  U256 y;
+  g1_to_words(&x, &y, p);
+  return make(m, VAL_OP, OP_PAIR, 0, 2, word_value(m, &x), word_value(m, &y), NULL);
+}
+
+/* One node of the verifier term through the reducer of its op, so a closed
+   node computes in the host and an open node stays stuck. */
+static const Value *zk_node(Machine *m, Op op, const Value *a, const Value *b, const Value *c) {
+  const Value *args[3];
+  args[0] = a;
+  args[1] = b;
+  args[2] = c;
+  return reduce_op(m, op, 0, 0, args, c != NULL ? 3u : b != NULL ? 2u : 1u);
+}
+
+/* The verifier term of a stuck zkVerify with a closed ring (S8 B3a, Q-B3
+   ruling (a)): blsag_verify unrolled for n over ecAdd, ecMul, hash, u256Le,
+   u256Eq, first, second, pair and flagIf, so the lowering emits 6n precompile
+   calls. The ring points, the H_i table, D, the tag and r minus 1 are closed
+   words of the term. The chain is the challenge fold of front/blsag.c: tag,
+   D, poll id, choice, I.x, I.y, L.x, L.y, R.x, R.y. ITEMS holds c_1, s_1 to
+   s_n, I.x, I.y. */
+static const Value *zk_unroll(Machine *m, const G1 *ring, uint32_t n, const Value *poll, const Value *choice, const Value *const *items) {
+  U256 w;
+  U256 v;
+  G1 h;
+  uint32_t counter = 0;
+  uint32_t i;
+  const Value *g;
+  const Value *tag;
+  const Value *d;
+  const Value *zero;
+  const Value *rmax;
+  const Value *img;
+  const Value *c;
+  const Value *out;
+  u256_from_u64(&w, 1u);
+  u256_from_u64(&v, 2u);
+  g = make(m, VAL_OP, OP_PAIR, 0, 2, word_value(m, &w), word_value(m, &v), NULL);
+  tag = word_value(m, &BLSAG_TAG);
+  blsag_digest(&w, ring, n);
+  d = word_value(m, &w);
+  u256_from_u64(&w, 0u);
+  zero = word_value(m, &w);
+  for (i = 0; i < 4u; i++)
+    w.limb[i] = (uint64_t)BN254_FR.w[2u * i] | ((uint64_t)BN254_FR.w[2u * i + 1u] << 32);
+  u256_from_u64(&v, 1u);
+  u256_sub(&w, &w, &v);
+  rmax = word_value(m, &w);
+  img = make(m, VAL_OP, OP_PAIR, 0, 2, items[n + 1u], items[n + 2u], NULL);
+  c = items[0];
+  for (i = 0; i < n; i++) {
+    const Value *s = items[1u + i];
+    const Value *l;
+    const Value *r;
+    if (!blsag_hash_point(&h, &counter, &ring[i]))
+      return overflow(m);
+    l = zk_node(m, OP_EC_ADD, zk_node(m, OP_EC_MUL, g, s, NULL), zk_node(m, OP_EC_MUL, zk_point_value(m, &ring[i]), c, NULL), NULL);
+    r = zk_node(m, OP_EC_ADD, zk_node(m, OP_EC_MUL, zk_point_value(m, &h), s, NULL), zk_node(m, OP_EC_MUL, img, c, NULL), NULL);
+    c = zk_node(m, OP_HASH, tag, d, NULL);
+    c = zk_node(m, OP_HASH, c, poll, NULL);
+    c = zk_node(m, OP_HASH, c, choice, NULL);
+    c = zk_node(m, OP_HASH, c, items[n + 1u], NULL);
+    c = zk_node(m, OP_HASH, c, items[n + 2u], NULL);
+    c = zk_node(m, OP_HASH, c, zk_node(m, OP_FIRST, l, NULL, NULL), NULL);
+    c = zk_node(m, OP_HASH, c, zk_node(m, OP_SECOND, l, NULL, NULL), NULL);
+    c = zk_node(m, OP_HASH, c, zk_node(m, OP_FIRST, r, NULL, NULL), NULL);
+    c = zk_node(m, OP_HASH, c, zk_node(m, OP_SECOND, r, NULL, NULL), NULL);
+  }
+  out = zk_node(m, OP_FLAG_IF, zk_node(m, OP_U256_EQ, items[n + 2u], zero, NULL), flag(m, 0), flag(m, 1));
+  out = zk_node(m, OP_FLAG_IF, zk_node(m, OP_U256_EQ, items[n + 1u], zero, NULL), out, flag(m, 1));
+  for (i = n; i > 0; i--)
+    out = zk_node(m, OP_FLAG_IF, zk_node(m, OP_U256_LE, items[i], rmax, NULL), out, flag(m, 0));
+  return zk_node(m, OP_FLAG_IF, zk_node(m, OP_U256_EQ, c, items[0], NULL), out, flag(m, 0));
+}
+
 /* zkVerify ring pollId choice sig: flagYes when the chain closes, each s_i
    is below r and I is not (0, 0). A list of another length than n + 3 is
-   flagNo. */
+   flagNo. An open poll id, choice or signature word with a closed ring of
+   the right length gives the unrolled verifier term (zk_unroll); any other
+   open call stays stuck. */
 static const Value *zk_verify(Machine *m, const Value *const *a, uint32_t n) {
   const Value *out = trap_arg(a, n);
   const Value *items[BLSAG_RING_MAX + 4u];
@@ -1581,20 +1664,23 @@ static const Value *zk_verify(Machine *m, const Value *const *a, uint32_t n) {
   uint32_t count = 0;
   uint32_t len = 0;
   uint32_t i;
+  int open = 0;
   if (out != NULL)
     return out;
   if (a[1]->kind != VAL_WORD || a[2]->kind != VAL_WORD)
-    return opaque(m, OP_ZK_VERIFY, a, n);
+    open = 1;
   if (!closed_list(a[3], items, BLSAG_RING_MAX + 3u, &len, &out))
     return out != NULL ? out : opaque(m, OP_ZK_VERIFY, a, n);
   for (i = 0; i < len && i < BLSAG_RING_MAX + 3u; i++) {
     if (items[i]->kind != VAL_WORD)
-      return opaque(m, OP_ZK_VERIFY, a, n);
+      open = 1;
   }
   if (!zk_ring(m, OP_ZK_VERIFY, a, n, ring, &count, &out))
-    return out;
+    return open ? opaque(m, OP_ZK_VERIFY, a, n) : out;
   if (len != count + 3u)
-    return flag(m, 0);
+    return open ? opaque(m, OP_ZK_VERIFY, a, n) : flag(m, 0);
+  if (open)
+    return zk_unroll(m, ring, count, a[1], a[2], items);
   for (i = 0; i < len; i++)
     sig[i] = *items[i]->word;
   switch (blsag_verify(ring, count, a[1]->word, a[2]->word, sig)) {

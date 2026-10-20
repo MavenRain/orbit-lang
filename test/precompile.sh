@@ -94,6 +94,24 @@ else
   call "out aa" addrWord 0x00000000000000000000000000000000000000aa
 fi
 
+# The private cast of examples/zkcast.lang (S8 B3a): the ring (p0, p1) at poll 0.
+# The six words are the `dao b0` row of test/prove/expect.txt (choice, c_1, s_1,
+# s_2, I.x, I.y): the valid cast enters, count 1 reads 1, the same key image reverts.
+prog=examples/zkcast.lang
+c1=39381386088514315497347125331661662002366806678711758872472619958305300356361u
+s1=10556691046619535408078082753355190806958972782948105030448836431921968396625u
+s2=5075046572376896310100317466143363171635445558286582457308097647558945948934u
+ix=10761449505403964036076757638925780734653286855769319211451479689235022075489u
+iy=7813043007448227325775284969956458831967279497483528366357925175793623591926u
+if ! deploy "$prog"; then
+  echo "FAIL zkcast deploy: $(head -n 1 "$tmp/dump")"
+  fail=$((fail + 1))
+else
+  call ok cast 1u "$c1" "$s1" "$s2" "$ix" "$iy"
+  call "out 1" count 1u
+  call revert cast 1u "$c1" "$s1" "$s2" "$ix" "$iy"
+fi
+
 rm -rf "$tmp"
 echo "precompile: $steps steps checked"
 echo "precompile gate: $fail failures"
