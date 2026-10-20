@@ -263,11 +263,11 @@ calls. The S9 gas table gives the numbers.
 | castPrivate m c | ballot := (secret key of m, c, poll id, ring) | not lowered (client side) |
 | proveZK b | ring signature over (poll id, project b), key image | not lowered (client side); `langc prove` writes the calldata |
 | project b | the choice field | the choice word in calldata |
-| verifyZK w t | a decidable check | ring verify, then key image unused, then tally increment; a failure reverts |
+| verifyZK w c t | a decidable check; the check reads the choice c (USER ruling S8 Q6), t is unread in S8 | ring verify, then key image unused, then tally increment; a failure reverts |
 
 Readings of law 5 (O11 to O13):
 
-- Completeness: `verifyZK (proveZK b) t ≡ Unit` is a Path in U through ua
+- Completeness: `verifyZK (proveZK b) (project b) t ≡ Unit` is a Path in U through ua
   (needs S5). The host checks it on test vectors. The kernel does not prove
   it, because the check runs over BN254 arithmetic.
 - Privacy: `Ballot_priv ≃ Choice × ZKWitness` is false as written, because a
@@ -320,7 +320,7 @@ for each build), the counts in docs/STATUS.md, and a USER commit.
 | S5 | DONE 2026-10-17: Glue, ua, uaBeta, hcomp at U (coin-lang merge of 44c917f, 91d7091 and 34acff5, builder call S5); Glue, glue and unglue guest formers (F17); ua and the equivalences domain definitions; Fin internal (O23) | Glue boundary mismatch, ua on a non-equivalence; Glue tube, cover and binder, unglue type; Fin range and case; hcomp cap and universe; Prop-like: a Glue at Prop, two isEquiv proofs, two ua proofs |
 | S6 | DONE 2026-10-18: HIITs and QIITs (new work, builder call S6): index telescopes and constructor results (HIT_INDEX), `and` blocks (BLOCK_ORDER), indexed and block folds, the domain families Size, Bag, Charter and Ratified (F18, F19); USER commits 6fa6a15 (B1, B2) and 8dd82a3 (B3); B4 rows, M3b and 9 of 9 mutants killed (STATUS "## S6") | wrong index in a path constructor (`hiit-wrong-index`, `hiit-no-result`, `hiit-wrong-head`), inductive-inductive order (`block-order`), missing coherence case (`bag-no-squash`, `block-fold-no-squash`); block fold arity (`block-fold-target`, `block-fold-extra`) |
 | S7 | DONE 2026-10-18: DAO prelude and laws 1 to 4 as guest theorems; menu of constitutions (new work, builder call S7): elim on domain families (F16), the prelude after `orbitProj` and `outcomeSet`, the slots `outcomeSet` and `menu`, the domain families Pos and Word, `bagOrbit : (n : Size) -> Equiv (OrbitN n) (Bag Choice n)`; USER commits 676c7a8 (B1), eafa1df (B2), ac157d0 (B3 part A) and 9c7b033 (B3 part B); B4 records, 9 of 9 mutants killed (STATUS "## S7") | a non-invariant constitution is refused (`constitution-noninvariant`); a wrong gov unit is refused (`gov-unit-wrong`); elim rows (`elim-family-count`, `elim-path-case`, `elim-motive-index`, `elim-block`, `elim-family-prop`); slot and prelude rows (`outcome-set-type`, `menu-type`, `dao-redefine`, `dao-no-set`) |
-| S8 | ZK layer: BN254 G1 in C, castPrivate, proveZK, project, verifyZK lowering, nullifier map | known-answer vectors; mutants: wrong ring member, reused key image, flipped choice, wrong poll id, point not on the curve |
+| S8 | DONE 2026-10-20: ZK layer (BN254 G1 in C, castPrivate, proveZK, project, verifyZK lowering, nullifier map; PLAN section 8, builder call S8); USER commits c3ab788 (B1), 8bd87a7 (B2a), b61db98 (B2b), adf9f45 (B2c), 92fb145 (B3a) and 3fc7f50 (B3b); B4 records, 8 of 8 mutants killed (STATUS "## S8") | known-answer vectors (k G, H_p, bLSAG for n = 2 and n = 3); check rows `zk-flip` (PATH_END) and `zk-redefine` (REFUSE_SIG); EVM revert rows in `test/precompile.sh`: wrong ring member, flipped choice, wrong poll id, key image off the curve, key image (0, 0), s_1 + r, reused key image |
 | S9 | contract end to end: deploy, cast, outcome, amend; host and EVM differential; gas table per ring size; chain probe | differential rows, revert rows, size limits EIP-170 and EIP-3860 |
 | S10 | law 6 (regimes), docs, final gate | regime rows |
 
@@ -973,7 +973,9 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
   proofs only as fixtures from an external prover, so proveZK is not
   evaluable in the host. USER ruling S8: bLSAG with a static H_p table
   that the compiler computes (section 8, Q2).
-- O11 verifyZK: a decidable family; "≡ 1" is a Path in U to Unit.
+- O11 verifyZK: a decidable family; "≡ 1" is a Path in U to Unit. USER
+  ruling S8 (Q6): `verifyZK w c t` reads the choice from c (the check row
+  `zk-flip` is PATH_END); t stays unread in S8.
 - O12 Privacy equivalence: the Ballot_pub reading of section 6.
 - O13 Nullifier: the key image; the one-use law as a proposition. USER
   ruling S8 (Q4): at run time `used : Map U256 Flag`, keyed by hash (hash

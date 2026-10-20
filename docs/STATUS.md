@@ -856,3 +856,104 @@ loop did the work by hand in sessions 1 to 10b
 (`orbit-lang-work/S7-HANDOFF.md`): B1 in sessions 2 to 5, B2 in session
 6, B3 part A in sessions 7 and 8, B3 part B in sessions 9 and 9b, the
 mutants in session 10, and this section and the gate in session 10b.
+
+## S8
+
+Slice S8 (the ZK layer, PLAN section 8) is complete on commit 81a9734
+plus the B4 records. S8 is new work in this lineage (O2 (a)). USER commit
+f662647 holds the S8 PLAN text (the builder call and the USER ruling S8).
+USER commit c3ab788 holds B1 (BN254 G1 in C, `src/front/bn254.c` and
+`bn254.h`: Fp and Fr with the modulus as a parameter, affine add and
+double, a Jacobian scalar mul and the on-curve test; host `ecAdd` and
+`ecMul` compute; `examples/bn254.lang`, 11 eval rows and the 2G words of
+`test/precompile.sh`). USER commit 8bd87a7 holds B2a (the host bLSAG
+prover and verifier with the static H_p table, `src/front/blsag.c` and
+`blsag.h`, `test/blsagtool.c`, `examples/zk.lang` and 35 eval rows). USER
+commit b61db98 holds B2b (the kernel private ballot and the witness
+operations: the splice `kernel/zk.lang` in `src/front/front.c:50-55` with
+`castPrivate`, `proveZK`, `project` and `verifyZK` over the internal
+carriers `ZkBallot` and `ZkWitness`; `examples/ring3.lang`, 4 eval rows
+and the check rows `zk-flip` and `zk-redefine`). USER commit adf9f45
+holds B2c (`langc prove`, `src/main.c`, the prove rows and the prove
+refusals in `test/gate.sh`). USER commit 92fb145 holds B3a (the `zkVerify`
+lowering, `zk_unroll` in `src/front/eval.c`, `examples/zkcast.lang` with
+the nullifier map, and the valid cast in `test/precompile.sh`). USER
+commit 3fc7f50 holds B3b (the six refusal rows in `test/precompile.sh`),
+and 81a9734 the `zkVerify` row of `docs/host/README.md`. B4 adds the
+mutant run (8 mutants) and the records, and no source change. The gate
+`make -B check` is GREEN, exit 0, with the clang `-Werror` check (log
+`orbit-lang-S8-s14-gate.log`).
+
+Rulings. The S8 builder call (PLAN section 8, 2026-10-18) gives the curve
+port, the prover, the kernel names, the lowering, the gate rows and the
+slices. The USER ruling S8: Q1 the C port of `fr.c` with the modulus as a
+parameter, the host computes `ecAdd` and `ecMul`; Q2 the static H_p table;
+Q3 the prover and `langc prove` in S8, the section 7 contract writer in
+S9; Q4 the nullifier map keyed with the poll id. The USER ruling S8
+session 3: Q5 poll id 0 in the host, `langc prove` takes the poll id as a
+command argument; Q6 `verifyZK w c t` reads the choice from c (the
+`zk-flip` row is PATH_END; the B4 records carry the signature into PLAN
+section 6 and O11); B1 keeps the Jacobian scalar mul. S8 adds no former:
+`kernel/zk.lang` adds types over F1 to F19, so SPEC still says F1 to F19.
+
+| Count | S7 (049c04e) | S8 | Reason |
+|---|---|---|---|
+| examples | 34 | 38 | `bn254`, `zk` and `zkcast` (kit), `ring3` (guest) |
+| check refusals | 161 | 163 | B2b `zk-flip` (PATH_END), `zk-redefine` (REFUSE_SIG) |
+| evals | 93 | 143 | B1 11 rows (k G for k in 1, 2, 3, r minus 1 and r, the curve traps; the 2G words row changed), B2a 35 rows (H_p, the bLSAG vectors), B2b 4 rows (`zk`), B3a 1 row (`zkcast`) |
+| proves | 0 | 2 | B2c `dao b0` and `ring3 b` (`test/prove/expect.txt`), with the prove refusals PROVE_BALLOT and EVAL_ARGS in `test/gate.sh` |
+| precompile steps | 18 | 33 | B3a the valid cast, the count read and the reused key image; B3b the six refusal rows |
+
+The other counts do not change: parse refusals 19, kit-only refusals 22,
+runs 5, run refusals 10, asmtool 8 of 8, builds 3, lower refusals 16,
+build checks 33, dispatch 20, evm steps 43, mock 13 rows, diff 15 rows,
+emit 24, and the review, domain, path, fuel, output, lower and hashing
+regressions. S8 adds the bLSAG regressions (`test/blsagtool.c`, B2a).
+
+Mutants, one at a time (runner `orbit-lang-work/S8-B4-mut.sh`, log
+`orbit-lang-work/S8-B4-mut.log`, one row per mutant with the killer
+output). Each mutant is one site, made and reverted by the Edit tool,
+with `make -B build/langc` for each build; NU is a guest edit
+(`examples/zkcast.lang`) with no rebuild. The runner stops unless `src`
+or `examples` differs from HEAD by exactly one site. After the loop,
+`make -B build/langc` on clean source builds and `git diff` shows no
+change. The host sites `blsag.c:140`, `141` and `258` (the poll id, the
+choice and the final compare of the host chain) were not edited: the
+kernel sites in `zk_unroll` were killed as recorded below. CC and PI
+were killed at the valid cast, rather than at their named refusal rows;
+this run does not establish mutation coverage of the host sites.
+
+| Mutant | Edit | Killer | Verdict |
+|---|---|---|---|
+| FP | bn254.c:134 `fe_mul`: the conditional subtract is skipped on the last shift (`i > 1 &&`) | eval rows `twoG`, `threeG`, `rMinusOneG` and `rG`: wrong words; `negSum`: trap | KILLED |
+| ON | bn254.c:197 `g1_on_curve`: `return 1;` | eval rows `addBad 2` gives 1 and `mulBad 2` gives 0 (want trap) | KILLED |
+| HP | blsag.c:94 `blsag_hash_point`: the counter loop starts at 1 | eval row `hTwoGk 0` gives 0 (want 1) | KILLED |
+| CH | eval.c:1651 `zk_unroll`: the final compare of the chain dropped (`return out;`) | precompile.sh: the wrong ring member cast want revert got ok (5 failures) | KILLED |
+| NU | examples/zkcast.lang:19 `cast`: `flagIf flagNo` in place of the nullifier read | precompile.sh: the reused key image cast want revert got ok (1 failure) | KILLED |
+| CC | eval.c:1639 `zk_unroll`: the choice hash line deleted | precompile.sh: the valid cast want ok got revert, count 1u reads 0 (2 failures); the flipped choice cast still reverts; `zk-flip` stays PATH_END | KILLED (code) |
+| PI | eval.c:1638 `zk_unroll`: the poll id hash line deleted | precompile.sh: the valid cast want ok got revert, count 1u reads 0 (2 failures); the poll 7u cast still reverts | KILLED (code) |
+| RG | eval.c:1650 `zk_unroll`: the s range test is `flag(m, 1)` | precompile.sh: the s_1 + r cast want revert got ok (2 failures) | KILLED |
+
+Score: 8 of 8 mutants killed. CH, NU and RG are admissions at the named
+EVM row (the wrong ring member, the reused key image, s_1 + r). FP, ON
+and HP are killed at the named eval rows. CC and PI are code kills: the
+gate fails at the valid cast, because the fixed `test/precompile.sh`
+vectors (lines 102 to 120) are signed by the host with the choice and the
+poll id in the hash chain. Dropping either hash changes the verifier's
+chain, so these fixed vectors fail; the named row (the flipped choice,
+the wrong poll id) still reverts. A signer using the altered chain can
+produce signatures it accepts, and those signatures no longer bind the
+omitted field. This run establishes detection of the lowering edits by
+the valid vector, but does not exercise acceptance of such signatures
+or their replay across choices or polls.
+
+Open items. Q-B3b-1: `test/dispatch.sh:17` keeps `od -An -tx1` in `sel`,
+the fold that broke the B3a selector in `test/evmchain.sh` (fixed there
+with `od -v` in 92fb145). The EVM row for a key image off the curve has
+no S8 mutant: it meets the older precompile site (PLAN section 8), and
+ON covers the host side. The row I = (0, 0) has no mutant: it also fails
+the compare. The guest one-use law (O13) and the section 7 contract
+writer (Q3) are S9.
+
+The S8 sessions are in the handoff (`orbit-lang-work/S8-HANDOFF.md`): the
+mutants in session 13, and this section and the gate in session 14.

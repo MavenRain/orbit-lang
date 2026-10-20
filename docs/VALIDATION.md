@@ -1,7 +1,7 @@
 # Validation
 
-Date: 2026-10-18. tcc: 0.9.28rc. evm (go-ethereum): 1.14.12. Host
-executable: `build/langc` at 9c7b033 (S7 B4 changes only the records).
+Date: 2026-10-20. tcc: 0.9.28rc. evm (go-ethereum): 1.14.12. Host
+executable: `build/langc` at 81a9734 (S8 B4 changes only the records).
 
 `make -B check` passes: it builds `langc` and the test tools with tcc,
 runs the clang `-Wall -Wextra -Wswitch-enum -Werror` check, and runs the
@@ -109,3 +109,24 @@ Prop in the motive telescope, a wrong type at the slot `outcomeSet` or
 Mutants EC, EP, ES, EV, PJ, PS, OS, MN and HIW are killed (9 of 9). EC,
 PS, OS and HIW are code kills, and HIW closes the S6 open item
 `hiit-wrong-index` (docs/STATUS.md "## S7").
+
+The S8 review adds the ZK layer (PLAN section 8, USER rulings S8 Q1 to
+Q6): BN254 G1 in C (`src/front/bn254.c`: Fp and Fr with the modulus as a
+parameter, affine add and double, a Jacobian scalar mul and the on-curve
+test; host `ecAdd` and `ecMul` compute), the host bLSAG prover and
+verifier with the static H_p table (`src/front/blsag.c`), the kernel
+splice `kernel/zk.lang` (`castPrivate`, `proveZK`, `project` and
+`verifyZK w c t` over the internal carriers `ZkBallot` and `ZkWitness`),
+`langc prove`, the `zkVerify` lowering (`zk_unroll` in `src/front/eval.c`,
+unrolled for the ring size of the program) and the nullifier map `used :
+Map U256 Flag` keyed by the key image and the poll id. The review adds the
+kit examples `bn254`, `zk` and `zkcast`, the guest example `ring3`, 50
+evals, 2 check refusals, 2 prove rows (`test/prove/expect.txt`) and 2
+prove refusals (`test/gate.sh`). Refusals cover the witness of a ballot
+read for the other choice (`zk-flip`, PATH_END) and a program definition
+of a ZK name (`zk-redefine`, REFUSE_SIG). The EVM rows in
+`test/precompile.sh` revert a cast with a wrong ring member, a flipped
+choice, a wrong poll id, a key image off the curve, the key image (0, 0),
+s_1 + r in place of s_1, and a reused key image. Mutants FP, ON, HP, CH,
+NU, CC, PI and RG are killed (8 of 8). CC and PI are code kills
+(docs/STATUS.md "## S8").
