@@ -933,6 +933,32 @@ the host side.
 - B1 g1_mul: "Keep Jacobian". The double and add loop keeps a Jacobian
   point (one inverse per product). One ecMul is 0.015 s under tcc.
 
+### USER ruling (S9 session 2, 2026-10-20)
+
+- Q-S9-1 O13 and O26: "(a) S10 with law 6". O13 (the guest one use law)
+  and O26 move to S10. Until O26 lands, docs/VALIDATION.md carries the
+  member permutation invariance of each menu entry as an assumption
+  (beside O29 and O30), and B2 compares one permuted config per histogram
+  as a witness.
+- Q-S9-2 chain probe: "(a) read only eth_call probe". B4 runs by hand
+  from probe/, outside the gate: an eth_call of 0x06, 0x07 and 0x08 with
+  the S2 vectors and an eth_call create of the written contract (a state
+  override for the cast path). The result is a dated row in
+  docs/VALIDATION.md. The USER names the RPC URLs and says go before any
+  network call (not named on 2026-10-20).
+- Q-S9-3 ring at deploy: "(a) ring closed in code". The writer closes the
+  ring in code, from the host key rule (member i is zkKey i G, the ring
+  `langc prove` signs over) or from `langc contract FILE --ring X1 Y1 ...
+  Xn Yn` (a point off bn254 is refused). START comes from `--start O` (an
+  Outcome constructor index, default 0). The section 7 constructor (ring,
+  charter index) reads as build arguments, not calldata.
+- Q-S9-4 readings: "all recommended". (i) While casts < n, outcome()
+  returns m (no outcome) and amend() reverts. (ii) selfConstituting() is 0
+  before the first amend (prior is no entry). (iii) Two menu entries are
+  one constitution id when their histogram tables are equal.
+- Q-B3b-1: "yes". test/dispatch.sh:17 reads `od -v -An -tx1`, so a
+  repeated 16 byte line of a selector text is not folded into `*`.
+
 ## 9. Open items
 
 USER ruling (S1, 2026-10-16): every default below is RULED; where an item
@@ -979,14 +1005,19 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
 - O12 Privacy equivalence: the Ballot_pub reading of section 6.
 - O13 Nullifier: the key image; the one-use law as a proposition. USER
   ruling S8 (Q4): at run time `used : Map U256 Flag`, keyed by hash (hash
-  I.x I.y) pollId. The guest one-use law is S9.
+  I.x I.y) pollId. The guest one-use law is S10, with law 6 (USER ruling
+  S9 session 2, Q-S9-1).
 - O14 Membership: a fixed ring at deployment; no join and no leave.
 - O15 Contract surface: (a, default) written by the compiler from the DAO
   declaration. (b) guest-written entries in the kit `state` syntax, which
-  needs the kit word types (O3 b).
+  needs the kit word types (O3 b). S9 B1: `langc contract FILE` writes the
+  kit program; the ring and START are build arguments (USER ruling S9
+  session 2, Q-S9-3 (a)).
 - O16 Chains: Ethereum mainnet has 0x05 to 0x08. Telcoin Network: confirm
   the precompile set and the EIP-170 limit from the chain spec or an RPC
-  probe. The repo gate runs only the kit EVM runner.
+  probe. The repo gate runs only the kit EVM runner. USER ruling S9
+  session 2 (Q-S9-2 (a)): a read only eth_call probe from probe/, outside
+  the gate, on RPC URLs the USER names.
 - O17 Proof irrelevance: PROHIBITED (USER ruling 2026-10-16). No Prop-like
   types of any kind (section 1).
 - O18 Off-chain commands: `langc prove` writes the cast calldata; `langc
@@ -1027,9 +1058,11 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
   constant stays neutral in S6, as O22. S7 or later rules a reduction.
 - O26 Member permutation invariance of a menu entry (O5 (a)): the run
   time tally forgets members, so each entry must also be invariant under
-  member permutation. S9 checks it at the histogram lowering, with
-  `Orbit ≃ Bag n` when Group is the member permutation group (USER ruling
-  S7, Q3).
+  member permutation. S10 checks it, with `Orbit ≃ Bag n` when Group is
+  the member permutation group (USER ruling S7, Q3), with law 6 (USER
+  ruling S9 session 2, Q-S9-1). Until then docs/VALIDATION.md carries it
+  as an assumption, and the S9 histogram table reads F at one canonical
+  config per histogram.
 - O27 Group at general n: S7 uses words of adjacent swaps (USER ruling S7,
   Q5). The full permutation form `Equiv (Pos n) (Pos n)` needs each
   permutation split into swaps (decidable equality on Pos n): a later
