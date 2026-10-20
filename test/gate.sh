@@ -195,6 +195,60 @@ contract_refused 2 USAGE - --kit contract examples/dao.lang
 echo "contracts: $written written, $refused refused, $cfail failed"
 fail=$((fail + cfail))
 
+# The ring sizes (S9 B3): the written contract of test/contract/ringN.lang must
+# build with at most 49152 initcode bytes (EIP-3860) and at most 24576 runtime
+# bytes (EIP-170). Ring 22 is the largest ring that builds: the runtime of ring
+# 23 is over EIP-170 (EVM_SIZE), and the cast of ring 28 takes 32 words, so its
+# signature is longer than 255 bytes (EVM_SIGNATURE). Ring 29 is the EVM_RING
+# row above. The gas of each ring is a table in docs/VALIDATION.md.
+rbuilt=0
+rrefused=0
+rfail=0
+# ring_built N: `langc contract` of ringN.lang, then `langc --kit build` and
+# `--kit build --runtime` of the written program must exit 0 within the limits.
+ring_built() {
+  status=0
+  : >"$tmp/init"
+  : >"$tmp/runtime"
+  { build/langc contract "test/contract/ring$1.lang" >"$tmp/ring.lang" &&
+    build/langc --kit build "$tmp/ring.lang" >"$tmp/init" &&
+    build/langc --kit build "$tmp/ring.lang" --runtime >"$tmp/runtime"; } 2>"$tmp/err" || status=$?
+  init=$(($(tr -d '\n' <"$tmp/init" | wc -c) / 2))
+  runtime=$(($(tr -d '\n' <"$tmp/runtime" | wc -c) / 2))
+  if [ "$status" -eq 0 ] && [ "$runtime" -gt 0 ] && [ "$init" -le 49152 ] && [ "$runtime" -le 24576 ]; then
+    rbuilt=$((rbuilt + 1))
+  else
+    echo "FAIL ring $1: want a build within 49152 and 24576 bytes, got exit $status, $init and $runtime bytes: $(head -n 1 "$tmp/err")"
+    rfail=$((rfail + 1))
+  fi
+}
+# ring_refused N CODE: `langc contract` of ringN.lang must exit 0, and `langc
+# --kit build` of the written program must exit 1, print `langc: CODE: -: ...`
+# on stderr and nothing on stdout.
+ring_refused() {
+  status=0
+  : >"$tmp/out"
+  if build/langc contract "test/contract/ring$1.lang" >"$tmp/ring.lang" 2>"$tmp/err"; then
+    build/langc --kit build "$tmp/ring.lang" >"$tmp/out" 2>"$tmp/err" || status=$?
+  else
+    status=contract
+  fi
+  case "$status:$(head -n 1 "$tmp/err"):$(wc -c <"$tmp/out" | tr -d ' ')" in
+    "1:langc: $2: -: "*":0") rrefused=$((rrefused + 1)) ;;
+    *) echo "FAIL ring $1: want build exit 1, $2 and no output, got exit $status: $(head -n 1 "$tmp/err")"; rfail=$((rfail + 1)) ;;
+  esac
+}
+ring_built 2
+ring_built 3
+ring_built 4
+ring_built 8
+ring_built 16
+ring_built 22
+ring_refused 23 EVM_SIZE
+ring_refused 28 EVM_SIGNATURE
+echo "rings: $rbuilt built, $rrefused refused, $rfail failed"
+fail=$((fail + rfail))
+
 # The differential (S9 B2) in the guest. A row of test/contract/diff.txt is
 # `PROG START GUEST PERMUTED BALLOTS NAME... => OUTCOME SELF`: `langc eval
 # examples/PROG.lang` of GUEST (the canonical config) and of PERMUTED (a config

@@ -130,3 +130,49 @@ choice, a wrong poll id, a key image off the curve, the key image (0, 0),
 s_1 + r in place of s_1, and a reused key image. Mutants FP, ON, HP, CH,
 NU, CC, PI and RG are killed (8 of 8). CC and PI are code kills
 (docs/STATUS.md "## S8").
+
+## Ring sizes and gas of the written contract (S9 B3)
+
+`test/contract/ringN.lang` is a guest program with every DAO slot, N
+members (Member as nested `Sum Unit`), 2 choices, one outcome and one
+constant entry. The row `rings:` of `test/gate.sh` writes the contract of
+each ring with `langc contract` and builds the written program with `langc
+--kit build` and `langc --kit build --runtime`. The initcode must be at most
+49152 bytes (EIP-3860) and the runtime at most 24576 bytes (EIP-170). Ring
+22 is the largest ring in this two-choice fixture family that builds. The
+runtime of ring 23 is over EIP-170,
+so the build gives EVM_SIZE. The cast of ring 28 takes 32 words and its
+signature is longer than 255 bytes, so the build gives EVM_SIGNATURE.
+`langc contract` writes these rings and refuses ring 29 (EVM_RING, a cast
+takes at most 28 members). The byte limit depends on the generated program,
+so 22 is not a general member cap: changing `Choice` to `Unit` in
+`ring23.lang` builds a 22600-byte runtime.
+
+Measured on 2026-10-20 at cee8237 with geth `evm` 1.14.12. For each ring:
+the deploy of the written contract, a cast by each member (choice 0, poll 0,
+the words of `langc prove test/contract/ringN.lang mK 0u` for member K),
+then `outcome` and `enact` (the amend of the design). The steps use
+`deploy` and `step` of `test/evmchain.sh` (caller 0x..aa, timestamp 1), and
+each step runs again on the same prestate with `evm run --statdump`, as in
+docs/host/CAPABILITY.md. The value is the gas of the execution. `evm run`
+does not add the intrinsic gas of a transaction. For `--create`, evm
+1.14.12 prints the `--gas` value less the gas of the create, so the deploy
+runs with `--gas 30000000` and the table gives 30000000 less the print. The
+deploy includes the code deposit (200 gas for each runtime byte). The first
+cast writes new storage slots and costs 34200 more than each later cast.
+Each member adds about 26980 gas to a cast (the bLSAG verify is unrolled for
+the ring size). On each ring each cast gives ok, `outcome` gives 0, `enact`
+gives ok and `selfConstituting` gives 1 (4403 gas). The gate does not check
+the gas, and there is no cap.
+
+| Members | Initcode bytes | Runtime bytes | Deploy | First cast | Each later cast | All N casts | Outcome | Enact |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2 | 2901 | 2876 | 597892 | 123157 | 88957 | 212114 | 8864 | 37100 |
+| 3 | 3962 | 3937 | 810311 | 150137 | 115937 | 382011 | 8867 | 37103 |
+| 4 | 5034 | 5009 | 1024927 | 177119 | 142919 | 605876 | 8870 | 37106 |
+| 8 | 9387 | 9362 | 1896462 | 285062 | 250862 | 2041096 | 8882 | 37118 |
+| 16 | 18019 | 17994 | 3624934 | 501024 | 466824 | 7503384 | 8906 | 37143 |
+| 22 | 24493 | 24468 | 4921470 | 663060 | 628860 | 13869120 | 8925 | 37161 |
+| 23 | EVM_SIZE | EVM_SIZE | | | | | | |
+| 28 | EVM_SIGNATURE | EVM_SIGNATURE | | | | | | |
+| 29 | EVM_RING (`langc contract`) | | | | | | | |
