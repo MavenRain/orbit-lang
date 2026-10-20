@@ -195,6 +195,45 @@ contract_refused 2 USAGE - --kit contract examples/dao.lang
 echo "contracts: $written written, $refused refused, $cfail failed"
 fail=$((fail + cfail))
 
+# The differential (S9 B2) in the guest. A row of test/contract/diff.txt is
+# `PROG START GUEST PERMUTED BALLOTS NAME... => OUTCOME SELF`: `langc eval
+# examples/PROG.lang` of GUEST (the canonical config) and of PERMUTED (a config
+# outside the act orbit) must exit 0 and print the Outcome constructor of index
+# OUTCOME. The rows are read on fd 3, so langc cannot read them.
+# ctor_index TEXT prints the constructor index of TEXT: each leading `inr (` adds
+# 1, then `inl unit` adds 0 and `inr unit` adds 1. Other text prints -.
+ctor_index() {
+  _text=$1
+  _index=0
+  while :; do
+    case $_text in
+      "inr ("*) _text=${_text#"inr ("}; _index=$((_index + 1)) ;;
+      *) break ;;
+    esac
+  done
+  case ${_text%%")"*} in
+    "inl unit") echo "$_index" ;;
+    "inr unit") echo $((_index + 1)) ;;
+    *) echo - ;;
+  esac
+}
+diffs=0
+while read -r line <&3; do
+  case $line in --*|'') continue ;; esac
+  set -- ${line%% => *}
+  want=${line#* => }
+  for name in "$3" "$4"; do
+    status=0
+    got=$(build/langc $(kit examples/kit.txt "$1.lang") eval "examples/$1.lang" "$name" 2>"$tmp/err") || status=$?
+    diffs=$((diffs + 1))
+    if [ "$status" -ne 0 ] || [ "$(ctor_index "$got")" != "${want%% *}" ]; then
+      echo "FAIL differential $1 $name: want outcome ${want%% *}, got exit $status: $got $(head -n 1 "$tmp/err")"
+      fail=$((fail + 1))
+    fi
+  done
+done 3<test/contract/diff.txt
+echo "differential: $diffs guest evals checked"
+
 status=0
 build/langc 2>/dev/null || status=$?
 [ "$status" -eq 2 ] || { echo "FAIL usage: want exit 2, got $status"; fail=$((fail + 1)); }

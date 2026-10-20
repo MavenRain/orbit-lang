@@ -185,3 +185,20 @@ def b0 : Ballot_priv := castPrivate (inl unit) (inr unit)
 def w0 : ZKWitness := proveZK b0
 def c0 : Choice := project b0
 def complete : Path (Type 0) (verifyZK w0 c0 splitTally) Unit := refl
+
+-- The S9 B2 differential (test/contract/diff.txt): each menu entry on the canonical config of each histogram (allA,
+-- split and allB, the writer order) and on the member swap of it. The host and the EVM rows give the same words.
+def swapped : (Member -> Choice) -> Member -> Choice :=
+  fun (c : Member -> Choice) (m : Member) => c (either (fun (u : Unit) => inr unit) (fun (u : Unit) => inl unit) m)
+def agree20 : Outcome := aggregate (menu (inl unit)) (orbitProj allA)
+def agree20p : Outcome := aggregate (menu (inl unit)) (orbitProj (swapped allA))
+def agree11 : Outcome := aggregate (menu (inl unit)) (orbitProj split)
+def agree11p : Outcome := aggregate (menu (inl unit)) (orbitProj (swapped split))
+def agree02 : Outcome := aggregate (menu (inl unit)) (orbitProj allB)
+def agree02p : Outcome := aggregate (menu (inl unit)) (orbitProj (swapped allB))
+def keep20 : Outcome := aggregate (menu (inr unit)) (orbitProj allA)
+def keep20p : Outcome := aggregate (menu (inr unit)) (orbitProj (swapped allA))
+def keep11 : Outcome := aggregate (menu (inr unit)) (orbitProj split)
+def keep11p : Outcome := aggregate (menu (inr unit)) (orbitProj (swapped split))
+def keep02 : Outcome := aggregate (menu (inr unit)) (orbitProj allB)
+def keep02p : Outcome := aggregate (menu (inr unit)) (orbitProj (swapped allB))

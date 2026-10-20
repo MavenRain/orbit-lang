@@ -180,6 +180,34 @@ else
   call "out 1" count 0u
 fi
 
+# The differential (S9 B2) on the EVM: for each row of test/contract/diff.txt,
+# the calls of test/run.sh on a new deploy of the written contract `langc
+# contract examples/PROG.lang --start START`. The SELF word is 1 for flagYes and
+# 0 for flagNo. The rows are read on fd 3, so evm and langc cannot read them.
+diffs=0
+while read -r line <&3; do
+  case $line in --*|'') continue ;; esac
+  set -- ${line%% => *}
+  want=${line#* => }
+  diffs=$((diffs + 1))
+  if ! build/langc contract "examples/$1.lang" --start "$2" >"$prog" || ! deploy "$prog"; then
+    echo "FAIL differential deploy $line: $(head -n 1 "$tmp/dump")"
+    fail=$((fail + 1))
+    continue
+  fi
+  ballots=$5
+  before=$fail
+  shift 5
+  for name in "$@"; do
+    call ok cast $(build/langc prove "test/contract/$ballots.lang" "$name" 0u | tr '\n' ' ')
+  done
+  call "out ${want%% *}" outcome
+  call ok enact
+  call "out ${want#* }" selfConstituting
+  [ "$fail" -eq "$before" ] || echo "FAIL differential row: $line"
+done 3<test/contract/diff.txt
+echo "differential: $diffs EVM rows checked"
+
 rm -rf "$tmp"
 echo "precompile: $steps steps checked"
 echo "precompile gate: $fail failures"

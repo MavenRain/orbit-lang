@@ -1,0 +1,16 @@
+-- The ballots of the 3 member DAO (examples/dao3.lang, S9 B2): `langc prove test/contract/ballots3.lang NAME POLL`
+-- gives the cast calldata (choice, c_1, s_1, s_2, s_3, I.x, I.y). The ring depends only on the Member cardinality (3).
+def Member : Type 0 := Sum Unit (Sum Unit Unit)
+def Choice : Type 0 := Sum Unit Unit
+def Outcome : Type 0 := Trunc0 Unit
+def Group : Type 0 := Sum Unit Unit
+def flip : Choice -> Choice := fun (c : Choice) => c
+def act : Group -> (Member -> Choice) -> Member -> Choice :=
+  fun (g : Group) (f : Member -> Choice) (m : Member) => either (fun (u : Unit) => f m) (fun (u : Unit) => flip (f m)) g
+def outcomeSet : isSet Outcome := fun (x : Outcome) (y : Outcome) (p : Path Outcome x y) (q : Path Outcome x y) => fun (i : I) => fun (j : I) => squash0 Unit x y p q i j
+def m0c0 : Ballot_priv := castPrivate (inl unit) (inl unit)
+def m0c1 : Ballot_priv := castPrivate (inl unit) (inr unit)
+def m1c0 : Ballot_priv := castPrivate (inr (inl unit)) (inl unit)
+def m1c1 : Ballot_priv := castPrivate (inr (inl unit)) (inr unit)
+def m2c0 : Ballot_priv := castPrivate (inr (inr unit)) (inl unit)
+def m2c1 : Ballot_priv := castPrivate (inr (inr unit)) (inr unit)

@@ -23,6 +23,52 @@ for script in test/run/*.script; do
 done
 echo "runs: $runs checked"
 
+# The differential (S9 B2) on the host. For each row of test/contract/diff.txt
+# (`PROG START GUEST PERMUTED BALLOTS NAME... => OUTCOME SELF`), `langc --kit run`
+# of the written contract `langc contract examples/PROG.lang --start START` over
+# a cast of each NAME (the words of `langc prove test/contract/BALLOTS.lang NAME
+# 0u`), then outcome, enact and selfConstituting, must print `I cast ok` for each
+# cast, `outcome = OUTCOMEu`, `enact ok` and `selfConstituting = flagYes` when
+# SELF is 1 (else flagNo). The rows are read on fd 3, so langc cannot read them.
+diffs=0
+dcaller=0x00000000000000000000000000000000000000aa
+while read -r line <&3; do
+  case $line in --*|'') continue ;; esac
+  set -- ${line%% => *}
+  want=${line#* => }
+  diffs=$((diffs + 1))
+  if ! build/langc contract "examples/$1.lang" --start "$2" >"$tmp/dao.lang" 2>"$tmp/err"; then
+    echo "FAIL differential $line: contract: $(head -n 1 "$tmp/err")"
+    fail=$((fail + 1))
+    continue
+  fi
+  ballots=$5
+  shift 5
+  : >"$tmp/diff.script"
+  : >"$tmp/diff.want"
+  n=0
+  for name in "$@"; do
+    n=$((n + 1))
+    words=$(build/langc prove "test/contract/$ballots.lang" "$name" 0u | tr '\n' ' ')
+    echo "$n $dcaller cast" $words >>"$tmp/diff.script"
+    echo "$n cast ok" >>"$tmp/diff.want"
+  done
+  flag=flagNo
+  if [ "${want#* }" = 1 ]; then flag=flagYes; fi
+  printf '%s\n' "$((n + 1)) $dcaller outcome" "$((n + 2)) $dcaller enact" \
+    "$((n + 3)) $dcaller selfConstituting" >>"$tmp/diff.script"
+  printf '%s\n' "$((n + 1)) outcome = ${want%% *}u" "$((n + 2)) enact ok" \
+    "$((n + 3)) selfConstituting = $flag" >>"$tmp/diff.want"
+  status=0
+  build/langc --kit run "$tmp/dao.lang" "$tmp/diff.script" >"$tmp/out" 2>"$tmp/err" || status=$?
+  head -n $((n + 3)) "$tmp/out" >"$tmp/diff.got"
+  if [ "$status" -ne 0 ] || ! cmp -s "$tmp/diff.want" "$tmp/diff.got"; then
+    echo "FAIL differential $line: exit $status: $(head -n 1 "$tmp/err") $(cmp "$tmp/diff.want" "$tmp/diff.got" 2>&1 | head -n 1)"
+    fail=$((fail + 1))
+  fi
+done 3<test/contract/diff.txt
+echo "differential: $diffs host runs checked"
+
 # run_refused STATUS CODE PROG LINE: `langc run PROG` on the one-line script
 # LINE must exit STATUS and print `langc: CODE: ...` on stderr.
 refused=0
