@@ -50,6 +50,10 @@ family Quot (A : Type 0) (R : A -> A -> Type 0) := quot (quotOf : A)
 -- The index of Bag (S6, O24, USER ruling S6): a domain family, so Nat
 -- stays internal.
 family Size := sz0 | szS (szPred : Size)
+-- The empty family (S10 B1, USER ruling Q-S10-9 (a)): one constructor and
+-- no base case, so no closed value. The parser needs a constructor, so
+-- Empty is not a family with no constructor (the Q-S10-4 (a) probe).
+family Empty := emptyLoop (emptyOf : Empty)
 -- The bag (S6, O20): an indexed HIT. Bag A n is the lists of n elements
 -- of A up to a swap of the first two, and bagSquash in the form of
 -- Trunc0 squash0 makes it a set at each index. A constructor states its
