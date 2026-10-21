@@ -165,3 +165,6 @@ regime-para-wrong.lang PATH_END
 regime-fork-wrong.lang PATH_END
 beta-critical.lang PATH_END
 noselfcon-wrong.lang TYPE_MISMATCH
+oneuse-reuse-wrong.lang PATH_END
+oneuse-key-wrong.lang PATH_END
+oneuse-nomark-wrong.lang PATH_END
