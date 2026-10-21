@@ -325,8 +325,8 @@ for each build), the counts in docs/STATUS.md, and a USER commit.
 | S6 | DONE 2026-10-18: HIITs and QIITs (new work, builder call S6): index telescopes and constructor results (HIT_INDEX), `and` blocks (BLOCK_ORDER), indexed and block folds, the domain families Size, Bag, Charter and Ratified (F18, F19); USER commits 6fa6a15 (B1, B2) and 8dd82a3 (B3); B4 rows, M3b and 9 of 9 mutants killed (STATUS "## S6") | wrong index in a path constructor (`hiit-wrong-index`, `hiit-no-result`, `hiit-wrong-head`), inductive-inductive order (`block-order`), missing coherence case (`bag-no-squash`, `block-fold-no-squash`); block fold arity (`block-fold-target`, `block-fold-extra`) |
 | S7 | DONE 2026-10-18: DAO prelude and laws 1 to 4 as guest theorems; menu of constitutions (new work, builder call S7): elim on domain families (F16), the prelude after `orbitProj` and `outcomeSet`, the slots `outcomeSet` and `menu`, the domain families Pos and Word, `bagOrbit : (n : Size) -> Equiv (OrbitN n) (Bag Choice n)`; USER commits 676c7a8 (B1), eafa1df (B2), ac157d0 (B3 part A) and 9c7b033 (B3 part B); B4 records, 9 of 9 mutants killed (STATUS "## S7") | a non-invariant constitution is refused (`constitution-noninvariant`); a wrong gov unit is refused (`gov-unit-wrong`); elim rows (`elim-family-count`, `elim-path-case`, `elim-motive-index`, `elim-block`, `elim-family-prop`); slot and prelude rows (`outcome-set-type`, `menu-type`, `dao-redefine`, `dao-no-set`) |
 | S8 | DONE 2026-10-20: ZK layer (BN254 G1 in C, castPrivate, proveZK, project, verifyZK lowering, nullifier map; PLAN section 8, builder call S8); USER commits c3ab788 (B1), 8bd87a7 (B2a), b61db98 (B2b), adf9f45 (B2c), 92fb145 (B3a) and 3fc7f50 (B3b); B4 records, 8 of 8 mutants killed (STATUS "## S8") | known-answer vectors (k G, H_p, bLSAG for n = 2 and n = 3); check rows `zk-flip` (PATH_END) and `zk-redefine` (REFUSE_SIG); EVM revert rows in `test/precompile.sh`: wrong ring member, flipped choice, wrong poll id, key image off the curve, key image (0, 0), s_1 + r, reused key image |
-| S9 | DONE 2026-10-20, CLOSED (USER ruling Q-S9-0; USER commits 7228663 (B1), cee8237 (B2), 55bd9c5 (B3) and 50fc1f5 (B5), 14 of 15 mutants killed, M10 equivalent on the fixtures; docs/STATUS.md "## S9"; B4 moves to S10 with O13 and O26, USER ruling S9 session 10, and waits on Q-S9-2, the RPC URLs and a go): the section 7 contract writer, contract end to end (O15 (a); S8 Q3): B1 the writer `langc contract` (deploy, cast, outcome, amend and the `selfConstituting()` view; the contract binds the poll id, S8 Q5); B2 the host and EVM differential; B3 the gas table per ring size (O28: n + 4 words per cast, 28 members at most) and the code size rows; B4 the chain probe (O16, outside the repo gate; moved to S10); B5 mutants and records | differential rows (guest eval, host run and EVM outcome per histogram); revert rows (a used key image, a choice out of range, a cast at an old poll id, amend before a complete tally); writer refusals (no DAO prelude, a carrier that is not finite, a ring above 28 members); size limits EIP-170 and EIP-3860 |
-| S10 | PLANNED 2026-10-20 (USER ruling Q-S10-0; S10 session 1; USER rulings 2026-10-20: Q-S10-1 (a), Q-S10-2 (a) S10 is the last slice, Q-S10-3 (c) B4 dropped, Q-S10-4 (a) as Q-S10-9 (a), Q-S10-5 (a), Q-S10-6 (a), Q-S10-8 (a); Q-S10-7 (b) at the B2 kickoff, S10 session 3): law 6 (regimes), docs, final gate, with O13 and O26 (USER ruling Q-S9-1 (a)) and the chain probe (moved from S9): B1 law 6, the regimes (`Regime := AI + AD + SI`, the count of self constituting menu entries over a finite phase set, O8 (a); β a pair of Size values, O9; the law `¬ IsSelfConstituting F` for an empty Aggregation, with the domain family `Empty := emptyLoop (emptyOf : Empty)`, as the parser needs a constructor, Q-S10-9 (a)); B2 O13, the guest one use law (Q-S10-7 (b): a guest ledger model of the used map in examples/oneuse.lang; at each ledger, a cast with a key image and then a second cast with it reverts; no signature change); B3 O26, member permutation invariance of each menu entry of `dao` and `dao3` (with `bagOrbit`); B4 the chain probe (O16) dropped (Q-S10-3 (c)); B5 docs and the final gate; B6 mutants and records | regime rows (guest evals of the regime at β = 1, at β > 1 and for a menu with no fixed point; check refusals for a wrong regime at each side of β = 1, β = 1 read as β > 1, and a broken `¬` law); one use rows (B2: guest evals of a first cast, a reused key image, an other key image and the counts; check refusals for an accepted reuse, a reverted other key image and a cast that does not mark its key image); member permutation rows per menu entry and a refusal for an entry that is not symmetric (B3); final gate |
+| S9 | DONE 2026-10-20, CLOSED (USER ruling Q-S9-0; USER commits 7228663 (B1), cee8237 (B2), 55bd9c5 (B3) and 50fc1f5 (B5), 14 of 15 mutants killed, M10 equivalent on the fixtures; docs/STATUS.md "## S9"; B4 moved to S10 with O13 and O26 (USER ruling S9 session 10), then was dropped (Q-S10-3 (c)); no chain probe was run): the section 7 contract writer, contract end to end (O15 (a); S8 Q3): B1 the writer `langc contract` (deploy, cast, outcome, amend and the `selfConstituting()` view; the contract binds the poll id, S8 Q5); B2 the host and EVM differential; B3 the gas table per ring size (O28: n + 4 words per cast, 28 members at most) and the code size rows; B4 the chain probe (O16, outside the repo gate; moved to S10); B5 mutants and records | differential rows (guest eval, host run and EVM outcome per histogram); revert rows (a used key image, a choice out of range, a cast at an old poll id, amend before a complete tally); writer refusals (no DAO prelude, a carrier that is not finite, a ring above 28 members); size limits EIP-170 and EIP-3860 |
+| S10 | IN PROGRESS 2026-10-21 (USER commits 96274e9 (B1 law 6), 5dbae79 (B2 O13) and 8779688 (B3 O26); B5 the records and the final gate are complete; B6 the mutants and their records are pending; docs/STATUS.md "## S10"; USER ruling Q-S10-0; S10 session 1; USER rulings 2026-10-20: Q-S10-1 (a), Q-S10-2 (a) S10 is the last slice, Q-S10-3 (c) B4 dropped, Q-S10-4 (a) as Q-S10-9 (a), Q-S10-5 (a), Q-S10-6 (a), Q-S10-8 (a); Q-S10-7 (b) at the B2 kickoff, S10 session 3): law 6 (regimes), docs, final gate, with O13 and O26 (USER ruling Q-S9-1 (a)) and the chain probe (moved from S9): B1 law 6, the regimes (`Regime := AI + AD + SI`, the count of self constituting menu entries over a finite phase set, O8 (a); β a pair of Size values, O9; the law `¬ IsSelfConstituting F` for an empty Aggregation, with the domain family `Empty := emptyLoop (emptyOf : Empty)`, as the parser needs a constructor, Q-S10-9 (a)); B2 O13, the guest one use law (Q-S10-7 (b): a guest ledger model of the used map in examples/oneuse.lang; at each ledger, a cast with a key image and then a second cast with it reverts; no signature change); B3 O26, member permutation invariance of each menu entry of `dao` and `dao3` (Q-S10-8 (a): a guest theorem per menu entry, no kernel change; `dao3` uses words of adjacent swaps, O27, not `bagOrbit`); B4 the chain probe (O16) dropped (Q-S10-3 (c)); B5 docs and the final gate; B6 mutants and records | regime rows (guest evals of the regime at β = 1, at β > 1 and for a menu with no fixed point; check refusals for a wrong regime at each side of β = 1, β = 1 read as β > 1, and a broken `¬` law); one use rows (B2: guest evals of a first cast, a reused key image, an other key image and the counts; check refusals for an accepted reuse, a reverted other key image and a cast that does not mark its key image); member permutation rows per menu entry and a refusal for an entry that is not symmetric (B3); final gate |
 
 Builder call (S2, 2026-10-16): port route Q. A probe in scratch clones
 compared two port orders on 6cd1104. Route P (sealed-lang 872b0b4,
@@ -943,13 +943,17 @@ the host side.
   and O26 move to S10. Until O26 lands, docs/VALIDATION.md carries the
   member permutation invariance of each menu entry as an assumption
   (beside O29 and O30), and B2 compares one permuted config per histogram
-  as a witness.
-- Q-S9-2 chain probe: "(a) read only eth_call probe". B4 runs by hand
+  as a witness. S10 B3 proves O26 as a guest theorem for each menu entry
+  (USER ruling Q-S10-8 (a)), so docs/VALIDATION.md records a theorem, not
+  an assumption (finding D1, docs/STATUS.md "## S10").
+- Q-S9-2 chain probe: "(a) read only eth_call probe". The original B4 plan
+  was to run by hand
   from probe/, outside the gate: an eth_call of 0x06, 0x07 and 0x08 with
   the S2 vectors and an eth_call create of the written contract (a state
   override for the cast path). The result is a dated row in
   docs/VALIDATION.md. The USER names the RPC URLs and says go before any
-  network call (not named on 2026-10-20).
+  network call (not named on 2026-10-20). Q-S10-3 (c) later dropped B4.
+  No chain probe was run, and none is pending in S10.
 - Q-S9-3 ring at deploy: "(a) ring closed in code". The writer closes the
   ring in code, from the host key rule (member i is zkKey i G, the ring
   `langc prove` signs over) or from `langc contract FILE --ring X1 Y1 ...
@@ -1009,8 +1013,10 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
 - O12 Privacy equivalence: the Ballot_pub reading of section 6.
 - O13 Nullifier: the key image; the one-use law as a proposition. USER
   ruling S8 (Q4): at run time `used : Map U256 Flag`, keyed by hash (hash
-  I.x I.y) pollId. The guest one-use law is S10, with law 6 (USER ruling
-  S9 session 2, Q-S9-1).
+  I.x I.y) pollId. The guest one-use law is S10 B2, with law 6 (USER
+  ruling S9 session 2, Q-S9-1): `oneUse` in examples/oneuse.lang, a state
+  law on a guest ledger model of the used map (USER ruling Q-S10-7 (b);
+  finding D2: the key image does not depend on the choice).
 - O14 Membership: a fixed ring at deployment; no join and no leave.
 - O15 Contract surface: (a, default) written by the compiler from the DAO
   declaration. (b) guest-written entries in the kit `state` syntax, which
@@ -1021,7 +1027,9 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
   the precompile set and the EIP-170 limit from the chain spec or an RPC
   probe. The repo gate runs only the kit EVM runner. USER ruling S9
   session 2 (Q-S9-2 (a)): a read only eth_call probe from probe/, outside
-  the gate, on RPC URLs the USER names.
+  the gate, on RPC URLs the USER names. Q-S10-3 (c) later dropped this
+  probe (S10 B4). No chain probe was run; the repo gate does not confirm
+  the target chain's precompile set or code size limits.
 - O17 Proof irrelevance: PROHIBITED (USER ruling 2026-10-16). No Prop-like
   types of any kind (section 1).
 - O18 Off-chain commands: `langc prove` writes the cast calldata; `langc
@@ -1062,11 +1070,15 @@ has options, (a) is the ruling. O17 is now a USER ruling, not a default.
   constant stays neutral in S6, as O22. S7 or later rules a reduction.
 - O26 Member permutation invariance of a menu entry (O5 (a)): the run
   time tally forgets members, so each entry must also be invariant under
-  member permutation. S10 checks it, with `Orbit ≃ Bag n` when Group is
-  the member permutation group (USER ruling S7, Q3), with law 6 (USER
-  ruling S9 session 2, Q-S9-1). Until then docs/VALIDATION.md carries it
-  as an assumption, and the S9 histogram table reads F at one canonical
-  config per histogram.
+  member permutation. S10 B3 proves it as a guest theorem for each menu
+  entry, with no kernel change (USER ruling Q-S10-8 (a)): `agreePerm` and
+  `keepPerm` over S2 in examples/dao.lang, and `majorityPerm` and
+  `unanimityPerm` over the 6 elements of S3, as words of adjacent swaps
+  (O27), in examples/dao3.lang. It is not an assumption in
+  docs/VALIDATION.md (finding D1). B3 does not use `Orbit ≃ Bag n` (USER
+  ruling S7, Q3), because the Member of `dao3` is not `Pos n0`. The S9
+  histogram table reads F at one canonical config per histogram, and the
+  theorems give the same outcome at each config of the histogram.
 - O27 Group at general n: S7 uses words of adjacent swaps (USER ruling S7,
   Q5). The full permutation form `Equiv (Pos n) (Pos n)` needs each
   permutation split into swaps (decidable equality on Pos n): a later

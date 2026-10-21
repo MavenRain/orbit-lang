@@ -1071,3 +1071,77 @@ The S9 sessions are in the handoff (`orbit-lang-work/S9-HANDOFF.md`): the
 plan and the rulings in sessions 1 and 2, B1 in sessions 3 and 4, B2 in 5
 and 6, B3 in 7, the mutants in 8 and 9, this section and the gate in
 session 9, and the close in session 10.
+
+## S10
+
+Slice S10 (law 6, the regimes, with O13, O26 and the final gate; PLAN
+row S10; USER rulings Q-S10-0 and Q-S9-1 (a)) is in progress. B1 to B3
+are complete on the USER commits 96274e9 (B1), 5dbae79 (B2) and 8779688
+(B3). B5 (this section, the records and the final gate) is complete on
+2026-10-21. B6, the mutants and their records, is pending; S10 is not
+closed. USER commit e13942f holds the S10 plan. USER commit
+96274e9 holds B1, law 6: the family `Empty` in `domain/domain.lang`,
+`examples/regimes.lang` (`Regime`, `regimeOf`, `betaGt`, `paraLaw`,
+`forkLaw`, `noneLaw` and `noSelfCon`), the check refusals
+`regime-para-wrong`, `regime-fork-wrong`, `beta-critical` and
+`noselfcon-wrong`, and 6 evals. USER commit 5dbae79 holds B2, O13:
+`examples/oneuse.lang` (the guest ledger model, `firstUse`, `otherUse`
+and `oneUse`), the check refusals `oneuse-reuse-wrong`,
+`oneuse-key-wrong` and `oneuse-nomark-wrong`, and 5 evals. USER commit
+8779688 holds B3, O26: `agreePerm` and `keepPerm` in
+`examples/dao.lang`, `majorityPerm` and `unanimityPerm` (with
+`permFromAdj`) in `examples/dao3.lang`, the check refusal
+`perm-member0-wrong` and 5 evals. B5 changes only docs/PLAN.md,
+docs/STATUS.md and docs/VALIDATION.md. S10 changes no C source and adds
+no former.
+
+Rulings. The USER ruling Q-S10-0 (2026-10-20) opens S10. The USER
+rulings of S10 session 2: Q-S10-1 (a) the parts B1 to B6; Q-S10-2 (a)
+S10 is the last slice, and the B5 gate is the final gate of orbit-lang;
+Q-S10-3 (c) B4, the chain probe (O16), is dropped; Q-S10-4 (a) and, at
+the B1 probe, Q-S10-9 (a) the empty family
+`Empty := emptyLoop (emptyOf : Empty)`, because the parser needs one
+constructor; Q-S10-5 (a) a guest classifier of the regime; Q-S10-6 (a)
+β is a pair of `Size` values; Q-S10-8 (a) O26 is a guest theorem for
+each menu entry of `dao` and `dao3`, with no kernel change. The USER
+ruling of S10 session 3: Q-S10-7 (b) O13 is a state law on a guest
+ledger model of the `used` map, with no signature change.
+
+Findings. D1 (O26 drift): PLAN O26 and the Q-S9-1 ruling said that
+docs/VALIDATION.md carries member permutation invariance as an
+assumption until S10, but docs/VALIDATION.md had no such text, and the
+S9 histogram table read F at one config per histogram with no stated
+assumption. B3 proves O26 as a guest theorem for each menu entry. B5
+records the theorem in docs/VALIDATION.md and restates PLAN O26 and
+Q-S9-1 in place. D2 (O13 reading): as PLAN section 6 stated it, reading
+(a), "the fibre of the verified ballots over one key image is a
+proposition", is false. Under the static H_p table (S8 Q2, I = x H_i),
+the key image does not depend on the choice, so that fibre has one
+point for each choice. Reading (a) also needs
+`keyImage : Ballot_priv -> KeyImage`, which is not one of the 9
+operations (O4). The USER ruled (b) (Q-S10-7), and the law reads the
+ledger state.
+
+Gate. `make -B -j 2 check` is GREEN, exit 0 (log
+`orbit-lang-S10-B5-gate.log`): 41 examples, 19 parse refusals, 171
+check refusals, 22 kit-only refusals, 159 evals, 2 proves, the contracts
+(2 written, 5 refused), the rings (6 built, 2 refused), the differential
+(28 guest evals, 14 host runs and 14 EVM rows), 128 precompile steps and
+the other rows of docs/VALIDATION.md, with 0 failures. Against the S10
+session 1 gate, B1 moves examples 39 to 40, check refusals 163 to 167
+and evals 143 to 149. B2 moves examples 40 to 41, check refusals 167 to
+170 and evals 149 to 154. B3 moves check refusals 170 to 171 and evals
+154 to 159. B5 moves no counter: the log is equal to
+`orbit-lang-S10-B3-gate.log`. Each other counter stays as in the S10
+session 1 gate.
+
+Open items. B6 runs the mutants of the design
+(`orbit-lang-work/S10-design.md` sections 5, 8 and 9): MR1 to MR5 (law
+6), MO1 to MO6 (O13) and MP1 to MP6 (O26), and then the records. B4 is
+dropped (Q-S10-3 (c)), so S10 runs no chain probe (O16). A link of
+`dao3` to `Orbit ≃ Bag n` (USER ruling S7, Q3) needs Member = `Pos n0`.
+S10 does not build it. It is a later item if the USER asks.
+
+The S10 sessions are in the handoff (`orbit-lang-work/S10-HANDOFF.md`):
+the plan in session 1, B1 in session 2, B2 in session 3, B3 in sessions
+4 and 4b, and this section and the final gate in session 5.
