@@ -961,9 +961,10 @@ mutants in session 13, and this section and the gate in session 14.
 ## S9
 
 Slice S9 (the section 7 contract writer, contract end to end, PLAN row S9;
-O15 (a), S8 Q3) is complete on commit 55bd9c5 plus the B5 records, except
-B4: the chain probe (O16) waits on the USER ruling Q-S9-2 (the RPC URLs and
-a go). USER commit 45b4bd2 holds the S9 PLAN text. USER commit 2b02db1
+O15 (a), S8 Q3) is closed on USER commit 50fc1f5 (B1 to B3 and B5). B4,
+the chain probe (O16), moves to S10 with O13 and O26 (USER ruling S9
+session 10) and waits on the RPC URLs and a go (Q-S9-2). USER commit
+45b4bd2 holds the S9 PLAN text. USER commit 2b02db1
 holds the S9 rulings (PLAN `### USER ruling (S9 session 2, 2026-10-20)`,
 O13, O15, O16 and O26) and the `od -v` fix in `test/dispatch.sh:17`
 (Q-B3b-1). USER commit 7228663 holds B1 (the writer `langc contract`,
@@ -977,9 +978,11 @@ definitions of `examples/dao.lang`, `test/contract/ballots3.lang` and the
 14 rows of `test/contract/diff.txt`, read by `test/gate.sh`, `test/run.sh`
 and `test/precompile.sh`). USER commit 55bd9c5 holds B3 (the ring size
 rows `test/contract/ringN.lang`, the `ring_built` and `ring_refused` rows
-of `test/gate.sh` and the gas table in docs/VALIDATION.md). B5 adds the
-mutant run (15 mutants) and the records, and no source change. The gate
-`make -B check` is GREEN, exit 0 (log `orbit-lang-S9-B5-gate.log`).
+of `test/gate.sh` and the gas table in docs/VALIDATION.md). USER commit
+50fc1f5 holds B5 (the mutant run, 15 mutants, and the records; no source
+change). The gate `make -B check` is GREEN, exit 0 (log
+`orbit-lang-S9-B5-gate.log`), and the close gate of session 10 gives the
+same counters (log `orbit-lang-S9-close-gate.log`).
 
 Rulings. The USER ruling Q-S9-0 (2026-10-20) gives the slices B1 to B5.
 The USER ruling S9 session 2: Q-S9-1 (a) O13 and O26 move to S10 with law
@@ -990,7 +993,11 @@ so B4 waits); Q-S9-3 (a) the ring is closed in code, with the `--ring` and
 reads m and `enact` (the amend of the design) reverts, (ii)
 `selfConstituting()` reads 0 before the first amend, (iii) a constitution
 is identified by its histogram table (equal tables share one entry id);
-Q-B3b-1 yes. S9 adds no former.
+Q-B3b-1 yes. The USER ruling S9 session 10: B4 moves to S10 with O13 and
+O26; Q-S9-5 (a) no row, the stuck code path stays; Q-S9-6 (a) the B3 state
+stays (the two-choice fixtures refuse ring 23 with EVM_SIZE and ring 28
+with EVM_SIGNATURE); Q-S9-7 (a) M10 stays recorded as equivalent on the
+fixtures. S9 adds no former.
 
 | Count | S8 (613bf43) | S9 | Reason |
 |---|---|---|---|
@@ -1050,14 +1057,17 @@ are equal. No fixture has two equal tables (the written headers: `dao` and
 the mutant writes the same text. A row that kills it needs a program in
 which two outcomes have equal tables, a new example (Q-S9-7).
 
-Open items. Q-S9-2: B4, the chain probe (the RPC URLs and a go). Q-S9-5:
-no guest program reaches the stuck table entry; the code path stays.
-Q-S9-6: the ring cap; `langc contract` writes rings 23 to 28, but their
-written program does not build (EVM_SIZE from ring 23 in this fixture
-family, EVM_SIGNATURE at ring 28); the B3 rows record it. Q-S9-7: a row
-that kills M10. O13 and O26 are S10 (Q-S9-1).
+Open items, all carried to S10 (USER ruling S9 session 10): B4, the chain
+probe (O16; Q-S9-2, the RPC URLs and a go), and O13 and O26 (Q-S9-1). The
+USER ruled Q-S9-5, Q-S9-6 and Q-S9-7 (a), so they close with S9: no guest
+program reaches the stuck table entry and the code path stays with no row;
+`langc contract` writes the B3 fixtures for rings 23 and 28, but their
+written programs do not build (EVM_SIZE and EVM_SIGNATURE, respectively),
+and the B3 rows record it. The size limit depends on the generated
+program, so 22 is not a general member cap (docs/VALIDATION.md).
+M10 stays equivalent on the fixtures.
 
 The S9 sessions are in the handoff (`orbit-lang-work/S9-HANDOFF.md`): the
 plan and the rulings in sessions 1 and 2, B1 in sessions 3 and 4, B2 in 5
-and 6, B3 in 7, the mutants in 8 and 9, and this section and the gate in
-session 9.
+and 6, B3 in 7, the mutants in 8 and 9, this section and the gate in
+session 9, and the close in session 10.

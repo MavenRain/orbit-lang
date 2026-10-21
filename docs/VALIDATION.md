@@ -147,7 +147,8 @@ Mutants M1 to M15 cover the writer, the ring bound and the size and
 signature limits: 14 are killed, and M10 (the entry id that `nextOf`
 writes) is equivalent on the fixtures, because no fixture has two equal
 outcome tables (docs/STATUS.md "## S9", Q-S9-7). The chain probe (B4)
-waits on the USER ruling Q-S9-2.
+moves to S10 (USER ruling S9 session 10) and waits on the RPC URLs and a
+go (Q-S9-2).
 
 ## Ring sizes and gas of the written contract (S9 B3)
 
