@@ -168,3 +168,4 @@ noselfcon-wrong.lang TYPE_MISMATCH
 oneuse-reuse-wrong.lang PATH_END
 oneuse-key-wrong.lang PATH_END
 oneuse-nomark-wrong.lang PATH_END
+perm-member0-wrong.lang PATH_END

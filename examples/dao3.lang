@@ -122,3 +122,79 @@ def all12 : Outcome := aggregate (menu (inr unit)) (orbitProj h12)
 def all12p : Outcome := aggregate (menu (inr unit)) (orbitProj (rot h12))
 def all03 : Outcome := aggregate (menu (inr unit)) (orbitProj h03)
 def all03p : Outcome := aggregate (menu (inr unit)) (orbitProj (rot h03))
+
+-- O26, member permutation invariance (S10 B3, USER ruling Q-S10-8 (a)): each menu entry has the same outcome on a
+-- configuration and on each of the 6 permutations of the 3 members. Adj holds the adjacent swaps (members 0 and 1,
+-- members 1 and 2), and Perm3 holds S3 as words of them (O27): the empty word, one letter, a letter and then the
+-- other letter, and s01 s12 s01. permFromAdj gives the 6 cases of a rule from its 2 adjacent swap lemmas. Each s12
+-- lemma is elim on the three choices; inlU and inrU take a Unit payload to unit (no eta for Unit).
+def Adj : Type 0 := Sum Unit Unit
+def other : Adj -> Adj := fun (a : Adj) => either (fun (u : Unit) => inr unit) (fun (u : Unit) => inl unit) a
+def swap12 : Member -> Member :=
+  fun (m : Member) => either (fun (u : Unit) => inl unit) (fun (r : Sum Unit Unit) => either (fun (u : Unit) => inr (inr unit)) (fun (u : Unit) => inr (inl unit)) r) m
+def adj : Adj -> Member -> Member := fun (a : Adj) (m : Member) => either (fun (u : Unit) => swap01 m) (fun (u : Unit) => swap12 m) a
+def Perm3 : Type 0 := Sum Unit (Sum Adj (Sum Adj Unit))
+def perm3 : Perm3 -> Member -> Member :=
+  fun (s : Perm3) (m : Member) => either (fun (u : Unit) => m)
+    (fun (r : Sum Adj (Sum Adj Unit)) => either (fun (a : Adj) => adj a m)
+      (fun (t : Sum Adj Unit) => either (fun (a : Adj) => adj a (adj (other a) m)) (fun (u : Unit) => swap01 (swap12 (swap01 m))) t) r) s
+def AdjInv : ((Member -> Choice) -> Choice) -> Type 0 :=
+  fun (F : (Member -> Choice) -> Choice) => (a : Adj) -> (c : Member -> Choice) -> Path Choice (F (fun (m : Member) => c (adj a m))) (F c)
+def PermInv : ((Member -> Choice) -> Choice) -> Type 0 :=
+  fun (F : (Member -> Choice) -> Choice) => (s : Perm3) -> (c : Member -> Choice) -> Path Choice (F (fun (m : Member) => c (perm3 s m))) (F c)
+def permFromAdj : (F : (Member -> Choice) -> Choice) -> AdjInv F -> PermInv F :=
+  fun (F : (Member -> Choice) -> Choice) (h : AdjInv F) (s : Perm3) (c : Member -> Choice) =>
+    elim (fun (p : Perm3) => Path Choice (F (fun (m : Member) => c (perm3 p m))) (F c))
+      (fun (u : Unit) => refl)
+      (fun (r : Sum Adj (Sum Adj Unit)) => elim (fun (q : Sum Adj (Sum Adj Unit)) => Path Choice (F (fun (m : Member) => c (perm3 (inr q) m))) (F c))
+        (fun (a : Adj) => h a c)
+        (fun (t : Sum Adj Unit) => elim (fun (q : Sum Adj Unit) => Path Choice (F (fun (m : Member) => c (perm3 (inr (inr q)) m))) (F c))
+          (fun (a : Adj) => trans Choice (F (fun (m : Member) => c (adj a (adj (other a) m)))) (F (fun (m : Member) => c (adj a m))) (F c)
+            (h (other a) (fun (m : Member) => c (adj a m))) (h a c))
+          (fun (u : Unit) => trans Choice (F (fun (m : Member) => c (swap01 (swap12 (swap01 m))))) (F (fun (m : Member) => c (swap01 (swap12 m)))) (F c)
+            (h (inl unit) (fun (m : Member) => c (swap01 (swap12 m))))
+            (trans Choice (F (fun (m : Member) => c (swap01 (swap12 m)))) (F (fun (m : Member) => c (swap01 m))) (F c)
+              (h (inr unit) (fun (m : Member) => c (swap01 m))) (h (inl unit) c))) t) r) s
+def inlU : (v : Unit) -> Path Choice (inl v) (inl unit) := fun (v : Unit) => elim (fun (w : Unit) => Path Choice (inl w) (inl unit)) refl v
+def inrU : (v : Unit) -> Path Choice (inr v) (inr unit) := fun (v : Unit) => elim (fun (w : Unit) => Path Choice (inr w) (inr unit)) refl v
+def maj3Swap12 : (x : Choice) -> (y : Choice) -> (z : Choice) -> Path Choice (maj3 x z y) (maj3 x y z) :=
+  fun (x : Choice) (y : Choice) (z : Choice) => elim (fun (a : Choice) => Path Choice (maj3 a z y) (maj3 a y z))
+    (fun (u : Unit) => elim (fun (b : Choice) => Path Choice (maj3 (inl u) z b) (maj3 (inl u) b z))
+      (fun (v : Unit) => elim (fun (e : Choice) => Path Choice (maj3 (inl u) e (inl v)) (maj3 (inl u) (inl v) e))
+        (fun (w : Unit) => refl) (fun (w : Unit) => inlU v) z)
+      (fun (v : Unit) => elim (fun (e : Choice) => Path Choice (maj3 (inl u) e (inr v)) (maj3 (inl u) (inr v) e))
+        (fun (w : Unit) => sym (inlU w)) (fun (w : Unit) => trans Choice (inr v) (inr unit) (inr w) (inrU v) (sym (inrU w))) z) y)
+    (fun (u : Unit) => elim (fun (b : Choice) => Path Choice (maj3 (inr u) z b) (maj3 (inr u) b z))
+      (fun (v : Unit) => elim (fun (e : Choice) => Path Choice (maj3 (inr u) e (inl v)) (maj3 (inr u) (inl v) e))
+        (fun (w : Unit) => trans Choice (inl v) (inl unit) (inl w) (inlU v) (sym (inlU w))) (fun (w : Unit) => sym (inrU w)) z)
+      (fun (v : Unit) => elim (fun (e : Choice) => Path Choice (maj3 (inr u) e (inr v)) (maj3 (inr u) (inr v) e))
+        (fun (w : Unit) => inrU v) (fun (w : Unit) => refl) z) y) x
+def all3Swap12 : (x : Choice) -> (y : Choice) -> (z : Choice) -> Path Choice (all3 x z y) (all3 x y z) :=
+  fun (x : Choice) (y : Choice) (z : Choice) => elim (fun (a : Choice) => Path Choice (all3 a z y) (all3 a y z))
+    (fun (u : Unit) => elim (fun (b : Choice) => Path Choice (all3 (inl u) z b) (all3 (inl u) b z))
+      (fun (v : Unit) => elim (fun (e : Choice) => Path Choice (all3 (inl u) e (inl v)) (all3 (inl u) (inl v) e))
+        (fun (w : Unit) => trans Choice (inl v) (inl unit) (inl w) (inlU v) (sym (inlU w))) (fun (w : Unit) => sym (inrU w)) z)
+      (fun (v : Unit) => elim (fun (e : Choice) => Path Choice (all3 (inl u) e (inr v)) (all3 (inl u) (inr v) e))
+        (fun (w : Unit) => inrU v) (fun (w : Unit) => refl) z) y)
+    (fun (u : Unit) => elim (fun (b : Choice) => Path Choice (all3 (inr u) z b) (all3 (inr u) b z))
+      (fun (v : Unit) => elim (fun (e : Choice) => Path Choice (all3 (inr u) e (inl v)) (all3 (inr u) (inl v) e))
+        (fun (w : Unit) => refl) (fun (w : Unit) => refl) z)
+      (fun (v : Unit) => elim (fun (e : Choice) => Path Choice (all3 (inr u) e (inr v)) (all3 (inr u) (inr v) e))
+        (fun (w : Unit) => refl) (fun (w : Unit) => refl) z) y) x
+def majorityAdj : AdjInv majority :=
+  fun (a : Adj) (c : Member -> Choice) => elim (fun (b : Adj) => Path Choice (majority (fun (m : Member) => c (adj b m))) (majority c))
+    (fun (u : Unit) => maj3Swap (c (inl unit)) (c (inr (inl unit))) (c (inr (inr unit))))
+    (fun (u : Unit) => maj3Swap12 (c (inl unit)) (c (inr (inl unit))) (c (inr (inr unit)))) a
+def unanimityAdj : AdjInv unanimity :=
+  fun (a : Adj) (c : Member -> Choice) => elim (fun (b : Adj) => Path Choice (unanimity (fun (m : Member) => c (adj b m))) (unanimity c))
+    (fun (u : Unit) => all3Swap (c (inl unit)) (c (inr (inl unit))) (c (inr (inr unit))))
+    (fun (u : Unit) => all3Swap12 (c (inl unit)) (c (inr (inl unit))) (c (inr (inr unit)))) a
+def majorityPerm : (s : Perm3) -> (c : Config) -> Path Outcome (witness (menu (inl unit)) (fun (m : Member) => c (perm3 s m))) (witness (menu (inl unit)) c) :=
+  permFromAdj majority majorityAdj
+def unanimityPerm : (s : Perm3) -> (c : Config) -> Path Outcome (witness (menu (inr unit)) (fun (m : Member) => c (perm3 s m))) (witness (menu (inr unit)) c) :=
+  permFromAdj unanimity unanimityAdj
+-- The eval rows: each letter and the words of 2 and 3 letters move a member (h12 and h21 tell the members apart).
+def adjS01 : Choice := h12 (adj (inl unit) (inl unit))
+def adjS12 : Choice := h21 (adj (inr unit) (inr (inr unit)))
+def permTwo : Choice := h12 (perm3 (inr (inr (inl (inl unit)))) (inr (inr unit)))
+def permThree : Choice := h12 (perm3 (inr (inr (inr unit))) (inl unit))

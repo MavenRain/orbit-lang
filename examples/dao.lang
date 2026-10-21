@@ -202,3 +202,26 @@ def keep11 : Outcome := aggregate (menu (inr unit)) (orbitProj split)
 def keep11p : Outcome := aggregate (menu (inr unit)) (orbitProj (swapped split))
 def keep02 : Outcome := aggregate (menu (inr unit)) (orbitProj allB)
 def keep02p : Outcome := aggregate (menu (inr unit)) (orbitProj (swapped allB))
+
+-- O26, member permutation invariance (S10 B3, USER ruling Q-S10-8 (a)): the tally forgets members, so each menu entry
+-- has the same outcome on a configuration and on each member permutation of it. MPerm is the permutation group of
+-- the 2 members (keep, swap), and a permutation acts on a configuration by composition. inlU and inrU take a Unit
+-- payload to unit (no eta for Unit). agreePerm needs same symmetric (sameSym); keepPerm is refl.
+def MPerm : Type 0 := Sum Unit Unit
+def permute : MPerm -> Member -> Member :=
+  fun (s : MPerm) (m : Member) => either (fun (u : Unit) => m) (fun (u : Unit) => either (fun (v : Unit) => inr unit) (fun (v : Unit) => inl unit) m) s
+def inlU : (v : Unit) -> Path Choice (inl v) (inl unit) := fun (v : Unit) => elim (fun (w : Unit) => Path Choice (inl w) (inl unit)) refl v
+def inrU : (v : Unit) -> Path Choice (inr v) (inr unit) := fun (v : Unit) => elim (fun (w : Unit) => Path Choice (inr w) (inr unit)) refl v
+def sameSym : (x : Choice) -> (y : Choice) -> Path Choice (same y x) (same x y) :=
+  fun (x : Choice) (y : Choice) => elim (fun (a : Choice) => Path Choice (same y a) (same a y))
+    (fun (u : Unit) => elim (fun (b : Choice) => Path Choice (same b (inl u)) (same (inl u) b))
+      (fun (v : Unit) => trans Choice (inl u) (inl unit) (inl v) (inlU u) (sym (inlU v))) (fun (v : Unit) => sym (inrU v)) y)
+    (fun (u : Unit) => elim (fun (b : Choice) => Path Choice (same b (inr u)) (same (inr u) b))
+      (fun (v : Unit) => inrU u) (fun (v : Unit) => refl) y) x
+def agreePerm : (s : MPerm) -> (c : Config) -> Path Outcome (witness (menu (inl unit)) (fun (m : Member) => c (permute s m))) (witness (menu (inl unit)) c) :=
+  fun (s : MPerm) (c : Config) => elim (fun (t : MPerm) => Path Outcome (witness (menu (inl unit)) (fun (m : Member) => c (permute t m))) (witness (menu (inl unit)) c))
+    (fun (u : Unit) => refl) (fun (u : Unit) => sameSym (c (inl unit)) (c (inr unit))) s
+def keepPerm : (s : MPerm) -> (c : Config) -> Path Outcome (witness (menu (inr unit)) (fun (m : Member) => c (permute s m))) (witness (menu (inr unit)) c) :=
+  fun (s : MPerm) (c : Config) => refl
+-- The eval row: member 0 of split after the swap is the choice of member 1.
+def permSwap0 : Choice := split (permute (inr unit) (inl unit))
