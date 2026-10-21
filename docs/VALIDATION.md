@@ -131,6 +131,24 @@ s_1 + r in place of s_1, and a reused key image. Mutants FP, ON, HP, CH,
 NU, CC, PI and RG are killed (8 of 8). CC and PI are code kills
 (docs/STATUS.md "## S8").
 
+The S9 review adds the section 7 contract writer (PLAN row S9, USER
+rulings Q-S9-1 to Q-S9-4): `langc contract` (`src/front/writer.c`) writes
+a kit program for the DAO of a guest program, with the ring closed in code
+(the host key rule or `--ring`), START from `--start`, the nullifier and
+the tally keys bound to the poll id, and the entries `cast`, `enact`,
+`count`, `outcome`, `selfConstituting`, `poll` and `constitution`. The
+review adds the guest example `dao3`, the contract rows (2 written, 5
+refused), the differential of 14 histograms over `dao` and `dao3`
+(`test/contract/diff.txt`: 28 guest evals, 14 host runs and 14 EVM rows),
+the ring size rows (6 built, 2 refused) and the gas table below. The EVM
+rows in `test/precompile.sh` revert `enact` before a complete tally, a
+reused key image, a choice out of range and a cast at an old poll id.
+Mutants M1 to M15 cover the writer, the ring bound and the size and
+signature limits: 14 are killed, and M10 (the entry id that `nextOf`
+writes) is equivalent on the fixtures, because no fixture has two equal
+outcome tables (docs/STATUS.md "## S9", Q-S9-7). The chain probe (B4)
+waits on the USER ruling Q-S9-2.
+
 ## Ring sizes and gas of the written contract (S9 B3)
 
 `test/contract/ringN.lang` is a guest program with every DAO slot, N

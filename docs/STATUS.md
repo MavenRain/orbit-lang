@@ -957,3 +957,107 @@ writer (Q3) are S9.
 
 The S8 sessions are in the handoff (`orbit-lang-work/S8-HANDOFF.md`): the
 mutants in session 13, and this section and the gate in session 14.
+
+## S9
+
+Slice S9 (the section 7 contract writer, contract end to end, PLAN row S9;
+O15 (a), S8 Q3) is complete on commit 55bd9c5 plus the B5 records, except
+B4: the chain probe (O16) waits on the USER ruling Q-S9-2 (the RPC URLs and
+a go). USER commit 45b4bd2 holds the S9 PLAN text. USER commit 2b02db1
+holds the S9 rulings (PLAN `### USER ruling (S9 session 2, 2026-10-20)`,
+O13, O15, O16 and O26) and the `od -v` fix in `test/dispatch.sh:17`
+(Q-B3b-1). USER commit 7228663 holds B1 (the writer `langc contract`,
+`src/front/writer.c` and `writer.h`: the ring closed in code from the host
+key rule or `--ring`, START from `--start`, the entries `cast`, `enact`,
+`count`, `outcome`, `selfConstituting`, `poll` and `constitution`;
+`test/writertool.c`; the contract rows of `test/gate.sh`, the written DAO
+block of `test/precompile.sh` and `test/contract/dao.expect`). USER commit
+cee8237 holds B2 (the differential: `examples/dao3.lang`, the differential
+definitions of `examples/dao.lang`, `test/contract/ballots3.lang` and the
+14 rows of `test/contract/diff.txt`, read by `test/gate.sh`, `test/run.sh`
+and `test/precompile.sh`). USER commit 55bd9c5 holds B3 (the ring size
+rows `test/contract/ringN.lang`, the `ring_built` and `ring_refused` rows
+of `test/gate.sh` and the gas table in docs/VALIDATION.md). B5 adds the
+mutant run (15 mutants) and the records, and no source change. The gate
+`make -B check` is GREEN, exit 0 (log `orbit-lang-S9-B5-gate.log`).
+
+Rulings. The USER ruling Q-S9-0 (2026-10-20) gives the slices B1 to B5.
+The USER ruling S9 session 2: Q-S9-1 (a) O13 and O26 move to S10 with law
+6, O26 stays a VALIDATION assumption until then; Q-S9-2 (a) a read only
+`eth_call` probe from `probe/`, outside the gate (no RPC URL is named yet,
+so B4 waits); Q-S9-3 (a) the ring is closed in code, with the `--ring` and
+`--start` build arguments; Q-S9-4 (i) with fewer than n casts `outcome()`
+reads m and `enact` (the amend of the design) reverts, (ii)
+`selfConstituting()` reads 0 before the first amend, (iii) a constitution
+is identified by its histogram table (equal tables share one entry id);
+Q-B3b-1 yes. S9 adds no former.
+
+| Count | S8 (613bf43) | S9 | Reason |
+|---|---|---|---|
+| examples | 38 | 39 | B2 `dao3` (guest) |
+| contracts | none | 2 written, 5 refused | B1 `dao.expect` and `--start 1` written; `nodao` and `open-choice` REFUSE_CONTRACT, `ring29` EVM_RING, `--ring 1 3 1 3` REFUSE_CONTRACT, `--kit contract` USAGE |
+| rings | none | 6 built, 2 refused | B3 rings 2, 3, 4, 8, 16 and 22 build; ring 23 EVM_SIZE and ring 28 EVM_SIGNATURE at `langc --kit build` |
+| differential | none | 28 guest evals, 14 host runs, 14 EVM rows | B2 the 14 rows of `test/contract/diff.txt` (the guest and the permuted eval per row, the written contract per row in the host and in the EVM) |
+| precompile steps | 33 | 128 | B1 the written DAO block (17 steps), B2 the differential (78 steps: 6 rows of 5, 8 rows of 6) |
+| writer regressions | none | passed | B1 `test/writertool.c` (the infinity and the duplicate ring key refusals) |
+
+The other counts do not change: parse refusals 19, check refusals 163,
+kit-only refusals 22, evals 143, proves 2, runs 5, run refusals 10,
+asmtool 8 of 8, builds 3, lower refusals 16, build checks 33, dispatch 20,
+evm steps 43, mock 13 rows, diff 15 rows, emit 24, and the review, domain,
+bLSAG, path, fuel, output, lower and hashing regressions.
+
+Mutants, one at a time (runner `orbit-lang-work/S9-B5-leg.sh`; the killer
+lines are in the handoff `orbit-lang-work/S9-HANDOFF.md`, sessions 8 and
+9). Each mutant is one site, made and put back by the Edit tool, with
+`make -B -j 2` for each build and the killing leg run alone. The runner
+prints `git diff --numstat` before each build, so each run also shows that
+the mutant before it was put back, and it compares the written `dao.lang`
+with `test/contract/dao.expect`. After the loop, `git diff` shows no
+change and `make -B -j 2` on clean source exits 0.
+
+| Mutant | Edit | Killer | Verdict |
+|---|---|---|---|
+| M1 CR | writer.c:368 the choice guard `u256Le k choice` at k + 1 | precompile.sh row 6: the cast of choice 2 want revert got ok (3 failures) | KILLED |
+| M2 NP | writer.c:369 and 376 the nullifier key `hash (hash ix iy) (pollId s)` is `hash ix iy` | precompile.sh row 15: the cast at poll 1 want ok got revert, row 16 the count (2 failures) | KILLED |
+| M3 PI | writer.c:382 `enact` keeps `pollId s` | precompile.sh row 12: `poll` want 1 got 0, row 15 the cast (2 failures) | KILLED |
+| M4 TZ | writer.c:354 and 377 the tally key `hash (pollId s) c` is `c` | precompile.sh row 16: `count 0u` at poll 1 want 1 got 2 (1 failure) | KILLED |
+| M5 CG | writer.c:381 the `enact` guard `u256Le n (casts s)` at 0 | precompile.sh row 2: `enact` want revert got ok (12 failures) | KILLED |
+| M6 SC | writer.c:386 `u256Eq (active s) (prior s)` is `u256Eq (active s) (active s)` | precompile.sh rows 3 and 13: `selfConstituting` want 0 got 1, the differential rows `agree11` and `keep20` (10 failures) | KILLED |
+| M7 HC | writer.c:105 the canonical configuration starts at `seen = 1` | precompile.sh row 10: `outcome` want 1 got 0, row 13 and the differential row `agree11` (13 failures) | KILLED |
+| M8 RB | writer.c:422 the ring bound is `BLSAG_RING_MAX + 1u` | gate.sh `ring29.lang`: want exit 1 and EVM_RING, got exit 0 (1 failure) | KILLED |
+| M9 TV | writer.c:294 the trie tests the votes of choice c against left minus v, not v | run.sh the `dao3` differential rows `maj30`, `maj21`, `maj12` and `maj03` (4 failures) | KILLED |
+| M10 NX | writer.c:289 `nextOf` writes the outcome index `t`, not the entry id | none: run.sh exit 0, the written `dao.lang` equals `dao.expect` | EQUIVALENT on the fixtures |
+| M11 RL | asm.h:14 `ASM_RUNTIME_MAX` is 24467 (one below the ring 22 runtime) | gate.sh `ring 22`: want a build, got exit 1 and EVM_SIZE (1 failure) | KILLED |
+| M12 RH | asm.h:14 `ASM_RUNTIME_MAX` is 25600 (over the ring 23 runtime) | gate.sh `ring 23`: want exit 1 and EVM_SIZE, got exit 0 (1 failure) | KILLED |
+| M13 SB | evm.c:12 `EVM_SIGNATURE` is 262 (the 261 byte signature of ring 28 fits) | gate.sh `ring 28`: want EVM_SIGNATURE, got EVM_SIZE (1 failure) | KILLED |
+| M14 SZ | lower.c:163 the code EVM_SIZE is EVM_LONG | gate.sh `ring 23`: got `langc: EVM_LONG` (1 failure) | KILLED |
+| M15 SN | lower.c:169 the code EVM_SIGNATURE is EVM_ABI | gate.sh `ring 28`: got `langc: EVM_ABI` (1 failure) | KILLED |
+
+Score: 14 of 15 mutants killed, and M10 is equivalent on the fixtures.
+M1 to M7 are killed at the named row of the written DAO block of
+`test/precompile.sh`, M8 and M11 to M15 at the named row of `test/gate.sh`.
+M9 is killed by the host differential at the `dao3` rows: on `dao` (k = 2)
+the tables are symmetric in the two counts, so the swapped trie reads the
+same outcome. M13 shows the order of the build checks: with the signature
+bound raised, ring 28 meets the size limit. M14 shows that the
+`langc --kit build` refusal line comes from `build_status` in
+`src/lower.c`, not from `src/asm.c:98`. M10: `dedup`
+(`src/front/writer.c:201`) gives the entry ids in the order of the first
+equal table, so the entry id of outcome t is t when no two outcome tables
+are equal. No fixture has two equal tables (the written headers: `dao` and
+`dao3` have 2 outcomes and 2 constitutions, each ring fixture 1 and 1), so
+the mutant writes the same text. A row that kills it needs a program in
+which two outcomes have equal tables, a new example (Q-S9-7).
+
+Open items. Q-S9-2: B4, the chain probe (the RPC URLs and a go). Q-S9-5:
+no guest program reaches the stuck table entry; the code path stays.
+Q-S9-6: the ring cap; `langc contract` writes rings 23 to 28, but their
+written program does not build (EVM_SIZE from ring 23 in this fixture
+family, EVM_SIGNATURE at ring 28); the B3 rows record it. Q-S9-7: a row
+that kills M10. O13 and O26 are S10 (Q-S9-1).
+
+The S9 sessions are in the handoff (`orbit-lang-work/S9-HANDOFF.md`): the
+plan and the rulings in sessions 1 and 2, B1 in sessions 3 and 4, B2 in 5
+and 6, B3 in 7, the mutants in 8 and 9, and this section and the gate in
+session 9.
