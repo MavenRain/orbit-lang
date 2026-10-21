@@ -1075,11 +1075,12 @@ session 9, and the close in session 10.
 ## S10
 
 Slice S10 (law 6, the regimes, with O13, O26 and the final gate; PLAN
-row S10; USER rulings Q-S10-0 and Q-S9-1 (a)) is in progress. B1 to B3
-are complete on the USER commits 96274e9 (B1), 5dbae79 (B2) and 8779688
-(B3). B5 (this section, the records and the final gate) is complete on
-2026-10-21. B6, the mutants and their records, is pending; S10 is not
-closed. USER commit e13942f holds the S10 plan. USER commit
+row S10; USER rulings Q-S10-0 and Q-S9-1 (a)) is DONE and CLOSED. B1
+to B3 are complete on the USER commits 96274e9 (B1), 5dbae79 (B2) and
+8779688 (B3). B5 (this section, the records and the final gate) is
+complete on the USER commit 423de45. B6 (the mutants and their records)
+kills 17 of 17 mutants on 2026-10-21. USER commit e13942f holds the S10
+plan. USER commit
 96274e9 holds B1, law 6: the family `Empty` in `domain/domain.lang`,
 `examples/regimes.lang` (`Regime`, `regimeOf`, `betaGt`, `paraLaw`,
 `forkLaw`, `noneLaw` and `noSelfCon`), the check refusals
@@ -1091,7 +1092,7 @@ and `oneUse`), the check refusals `oneuse-reuse-wrong`,
 8779688 holds B3, O26: `agreePerm` and `keepPerm` in
 `examples/dao.lang`, `majorityPerm` and `unanimityPerm` (with
 `permFromAdj`) in `examples/dao3.lang`, the check refusal
-`perm-member0-wrong` and 5 evals. B5 changes only docs/PLAN.md,
+`perm-member0-wrong` and 5 evals. B5 and B6 change only docs/PLAN.md,
 docs/STATUS.md and docs/VALIDATION.md. S10 changes no C source and adds
 no former.
 
@@ -1120,7 +1121,19 @@ the key image does not depend on the choice, so that fibre has one
 point for each choice. Reading (a) also needs
 `keyImage : Ballot_priv -> KeyImage`, which is not one of the 9
 operations (O4). The USER ruled (b) (Q-S10-7), and the law reads the
-ledger state.
+ledger state. D3 (B6 killers): 5 of the 17 mutants fail first at a row
+that the design does not name. MR2 and MR3 fail at `paraLaw`, because
+each mutant also changes the regime at β = 1, and `paraLaw` is the first
+law in the file (the design names `beta-critical` and `forkLaw`). MP1
+fails at `agreePerm`, MP2 at `majorityAdj` and MP3 at `permFromAdj`,
+because these proofs use the changed function (the design names only
+evals for MP1 and MP2, and `majorityAdj` for MP3). The check refusals
+`beta-critical`, `oneuse-reuse-wrong` and `oneuse-key-wrong`, which the
+design names for MR2, MO1 and MO3, do not fail. Each check refusal has
+its own copy of the guest code, so a mutant of an example file does not
+change it. When the examples gate refuses a file, each eval row of that
+file also fails, because `langc eval` checks the file first. The table
+below records the real killer of each mutant.
 
 Gate. `make -B -j 2 check` is GREEN, exit 0 (log
 `orbit-lang-S10-B5-gate.log`): 41 examples, 19 parse refusals, 171
@@ -1133,15 +1146,43 @@ and evals 143 to 149. B2 moves examples 40 to 41, check refusals 167 to
 170 and evals 149 to 154. B3 moves check refusals 170 to 171 and evals
 154 to 159. B5 moves no counter: the log is equal to
 `orbit-lang-S10-B3-gate.log`. Each other counter stays as in the S10
-session 1 gate.
+session 1 gate. B6 moves no counter. The only diff of
+`orbit-lang-S10-B6-gate.log` to `orbit-lang-S10-B5-gate.log` is the
+place of one build command line (the `-j 2` build order).
 
-Open items. B6 runs the mutants of the design
-(`orbit-lang-work/S10-design.md` sections 5, 8 and 9): MR1 to MR5 (law
-6), MO1 to MO6 (O13) and MP1 to MP6 (O26), and then the records. B4 is
-dropped (Q-S10-3 (c)), so S10 runs no chain probe (O16). A link of
+Mutants (B6, `orbit-lang-work/S10-design.md` sections 5, 8 and 9). Each
+mutant is one edit to the guest code: MR1 to MR5 (law 6), MO1 to MO6
+(O13) and MP1 to MP6 (O26). `make -B -j 2 check` runs once for each
+mutant (log `orbit-lang-S10-B6-<id>.log`), and `cp` restores the file
+before the next mutant. A log line is the line of the first failure in
+that log. Score: 17 of 17 killed.
+
+| Mutant | Site | Change | Killer | Result |
+|---|---|---|---|---|
+| MR1 | `bump` in examples/regimes.lang (the step of `regimeOf`) | the first fixed point gives SI in place of AD, so 1 fixed point maps to SI | examples gate: `paraLaw` PATH_END (log line 36); the 6 regimes evals with `regimeAt11` (7 failures) | KILLED |
+| MR2 | `betaGt` | num ≥ den in place of num > den (the zero case) | examples gate: `paraLaw` PATH_END (log line 36), D3; the 6 regimes evals with `beta11` (7 failures) | KILLED |
+| MR3 | `isFix` | compares to `phaseZero` in place of o | examples gate: `paraLaw` PATH_END (log line 36), D3; the 6 regimes evals with `regimeAt21` (7 failures) | KILLED |
+| MR4 | `nextPhase` (the step of `cycleMenu`) | the last phase selects itself | examples gate: `noneLaw` PATH_END (log line 36); the 6 regimes evals with `regimeCycle` (7 failures) | KILLED |
+| MR5 | `Empty` in domain/domain.lang (Q-S10-9 (a)) | a base constructor `emptyBase` | examples gate: `exfalso` TYPE_MISMATCH, elim on Empty needs 2 cases (log line 36); the 6 regimes evals (7 failures) | KILLED |
+| MO1 | `castWith` in examples/oneuse.lang | a spent mark records again | examples gate: `oneUseL` (a case of `oneUse`) PATH_END (log line 36); the 5 oneuse evals with `reuseCast` (6 failures) | KILLED |
+| MO2 | `markAt` | k is not marked (`u j` in both branches) | examples gate: `oneUseL` PATH_END (log line 36); the 5 oneuse evals with `reuseCast` (6 failures) | KILLED |
+| MO3 | `markAt` | each key image is marked (`spent` in both branches) | examples gate: `otherUse` PATH_END (log line 36); the 5 oneuse evals with `otherCast` (6 failures) | KILLED |
+| MO4 | `bumpAt` | the count of the other choice moves | evals `countYes` (got `sz0`) and `countNo` (got `szS (szS sz0)`) (log line 40; 2 failures) | KILLED |
+| MO5 | `castOr` | a revert gives `empty` in place of the ledger | eval `countYes` (got `szS sz0`) (log line 40; 1 failure) | KILLED |
+| MO6 | `empty` | keyA starts spent | examples gate: `firstUse` PATH_END (log line 36); the 5 oneuse evals with `firstCast` (6 failures) | KILLED |
+| MP1 | `permute` in examples/dao.lang | the swap case is the identity | examples gate: `agreePerm` TYPE_MISMATCH (log line 36), D3; the dao evals with `permSwap0`, the contract and the differential rows (27 failures) | KILLED |
+| MP2 | `swap12` in examples/dao3.lang | the identity | examples gate: `majorityAdj` TYPE_MISMATCH (log line 36), D3; the dao3 evals with `adjS12` and the differential rows (21 failures) | KILLED |
+| MP3 | `adj` | s01 gives `swap12` | examples gate: `permFromAdj` TYPE_MISMATCH (log line 36), D3; the dao3 evals with `adjS01` and the differential rows (21 failures) | KILLED |
+| MP4 | `other` | the identity (a, then a) | eval `permTwo` (got `inr unit`) (log line 40; 1 failure) | KILLED |
+| MP5 | `perm3` | the 3 letter word drops a letter (`swap01 (swap12 m)`) | examples gate: `permFromAdj` TYPE_MISMATCH (log line 36); the dao3 evals with `permThree` and the differential rows (21 failures) | KILLED |
+| MP6 | `sameSym` in examples/dao.lang | refl at the (inl, inl) case | examples gate: `sameSym` PATH_END (log line 36); the dao evals, the contract and the differential rows (27 failures) | KILLED |
+
+Open items. None in S10. B4 is dropped (Q-S10-3 (c)), so S10 runs no
+chain probe (O16). A link of
 `dao3` to `Orbit ≃ Bag n` (USER ruling S7, Q3) needs Member = `Pos n0`.
 S10 does not build it. It is a later item if the USER asks.
 
 The S10 sessions are in the handoff (`orbit-lang-work/S10-HANDOFF.md`):
 the plan in session 1, B1 in session 2, B2 in session 3, B3 in sessions
-4 and 4b, and this section and the final gate in session 5.
+4 and 4b, this section and the final gate (B5) in session 5, and the
+mutants and their records (B6) in session 6.

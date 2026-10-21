@@ -213,8 +213,8 @@ review adds 5 evals (`permSwap0`, `adjS01`, `adjS12`, `permTwo` and
 symmetric (`perm-member0-wrong`, PATH_END). B3 changes no kernel or
 host source, and it does not use `Orbit ≃ Bag n` (USER ruling S7, Q3),
 because the Member of `dao3` is not `Pos n0`. The S10 mutants (MR1 to
-MR5, MO1 to MO6 and MP1 to MP6) have not run. B6 and its records are
-pending, so S10 is not complete despite the green B5 gate.
+MR5, MO1 to MO6 and MP1 to MP6) ran in B6, and 17 of 17 are killed
+(docs/STATUS.md "## S10", finding D3). S10 is complete and closed.
 
 ## Ring sizes and gas of the written contract (S9 B3)
 
